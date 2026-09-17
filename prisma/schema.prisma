@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  userName     String   @map("user_name") @db.VarChar(500)
+  password     String   @db.VarChar(500)
+  name         String   @db.VarChar(500)
+  memberNo     String   @map("member_no") @db.VarChar(100)
+  orgId        Int      @map("org_id")
+  role         String   @db.VarChar(100)
+  defaultRole  Int?     @map("default_role")
+  active       Int
+  isOfficeUser Int      @map("is_office_user")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("users")
+}
+
+// Partial model: only the columns the API reads. The real table has many more columns,
+// so never run `prisma migrate` or `prisma db push` against this database (it would drop them).
+model MembershipMaster {
+  mid           Int    @id
+  membershipNo  String @map("membership_no") @db.VarChar(20)
+  mobileCountry String @map("mobile_country") @db.VarChar(10)
+  mobile        String @db.VarChar(20)
+
+  @@map("membership_master")
+}
