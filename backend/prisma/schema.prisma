@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/db/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  userName     String   @map("user_name") @db.VarChar(500)
+  password     String   @db.VarChar(500)
+  name         String   @db.VarChar(500)
+  memberNo     String   @map("member_no") @db.VarChar(100)
+  orgId        Int      @map("org_id")
+  role         String   @db.VarChar(100)
+  defaultRole  Int?     @map("default_role")
+  active       Int
+  isOfficeUser Int      @map("is_office_user")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("users")
+}
+
+// Partial model: only the columns the API reads. The real table has many more columns,
+// so never run `prisma migrate` or `prisma db push` against this database (it would drop them).
+// passport_no, userPassword and hashcode are deliberately left out so they can never be returned.
+model MembershipMaster {
+  mid                Int    @id
+  membershipNo       String @map("membership_no") @db.VarChar(20)
+  memberName         String @map("member_name") @db.VarChar(50)
+  fatherName         String @map("father_name") @db.VarChar(50)
+  unitId             Int    @map("unit_id")
+  mobileCountry      String @map("mobile_country") @db.VarChar(10)
+  mobile             String @db.VarChar(20)
+  whatsappNo         String @map("whatsapp_no") @db.VarChar(50)
+  mobileIn           String @map("mobile_in") @db.VarChar(20)
+  addressGulf        String @map("address_gulf") @db.Text
+  housenameIn        String @map("housename_in") @db.VarChar(50)
+  placeIn            String @map("place_in") @db.VarChar(50)
+  postIn             String @map("post_in") @db.VarChar(50)
+  districtInId       Int    @map("district_in_id")
+  dateOfBirth        String @map("date_of_birth") @db.VarChar(20)
+  professionId       Int    @map("profession_id")
+  bloodgroupId       Int?   @map("bloodgroup_id")
+  educationId        Int?   @map("education_id")
+  islamicEducationId Int?   @map("islamic_education_id")
+  unitIndia          String @map("unit_india") @db.VarChar(50)
+  zoneIndia          String @map("zone_india") @db.VarChar(50)
+  imageUrl           String @map("image_url") @db.Text
+  cmtDesignation     Int    @map("cmt_designation")
+  isverified         String @db.VarChar(1)
+  memType            String @map("mem_type") @db.Char(2)
+  transferred        String @db.VarChar(50)
+  active             Int
+
+  @@map("membership_master")
+}
+
+// Optional profile extras: only a few members have a row.
+model MembershipDetail {
+  mdId          Int     @id @map("md_id")
+  masterMid     Int     @map("master_mid")
+  emailId       String? @db.VarChar(75)
+  whatsAppNo    String? @map("WhatsAppNo") @db.VarChar(25)
+  city          Int?
+  gender        String? @db.VarChar(25)
+  maritalStatus String? @map("MaritalStatus") @db.Char(1)
+
+  @@map("membership_details")
+}
+
+// Display values for membership_master ids, grouped by dname:
+// DISTRICT, BLOOD_GROUP, PROFESSION, EDUCATION, ISLAMIC_EDUCATION.
+model DomainItem {
+  did    Int     @id
+  dname  String?
+  dvalue String?
+
+  @@map(" ")
+}
+
+// The table has no primary key; code is unique in practice and this model is only read.
+model Country {
+  code      String  @id
+  name      String?
+  phoneCode Int?    @map("phone_code")
+
+  @@map("countries")
+}
+
+// The designation catalogue. desigLevel/level order the committee hierarchy, orgtype and
+// councilorFilter scope a designation to a kind of unit, and the is*/multiAllowed flags are
+// single-character Y/N columns. isCabinet picks the designations offered at login (see TASKS.md).
+model CommitteeDesignations {
+  desid           Int     @id
+  desigName       String  @map("desig_name") @db.VarChar(50)
+  desigLevel      Int     @map("desig_level")
+  isCouncilor     String  @map("is_councilor") @db.VarChar(1)
+  councilorFilter String  @map("councilor_filter") @db.VarChar(2)
+  orgtype         Int
+  directorateId   String? @map("directorate_id") @db.VarChar(250)
+  level           Int?
+  multiAllowed    String  @map("multi_allowed") @db.VarChar(1)
+  departmentId    Int     @map("department_id")
+  isCabinet       String? @map("is_cabinet") @db.VarChar(1)
+  isSenate        String  @map("is_senate") @db.VarChar(1)
+  desigValue      Int?    @map("desig_value") @db.SmallInt
+
+  @@map("committee_designations")
+}
+
+// Committee membership records. The uploaded image should be stored in cloud storage;
+// this table stores only its URL or object key.
+model CommitteeMember {
+  cmid      Int     @id
+  cdesignId Int     @map("cdesign_id")
+  cmemId    Int     @map("cmem_id")
+  corgId    Int     @map("corg_id")
+  imageUrl  String? @map("image_url") @db.Text
+
+  @@map("committee_members")
+}
+
+model City {
+  id          Int     @id
+  countryCode String? @map("country_code")
+  city        String?
+
+  @@map("cities")
+}
+
+// Partial: the real table also stores each unit's login passwords (pass, pass_siraj, pass_pv,
+// pass_mem, pass_gen, pass_ilal, delivery_password, masool_password, sirajdelivery_password).
+// They are left out on purpose - findOrganisationById() selects every mapped column, so mapping
+// them here would pull plaintext unit credentials into the auth service.
+// connectAuth (connect_auth) is the organisation's forgot-password access code: read it server-side
+// only to compare against what the user typed, and never include it in an API response or a log line.
+model OrganisationUnit {
+  orgid                 Int      @id
+  orgname               String?  @db.VarChar(100)
+  regNo                 String   @map("reg_no") @db.VarChar(20)
+  loginname             String?  @db.VarChar(100)
+  ilalUsername          String?  @map("ilal_username") @db.VarChar(50)
+  deliveryUsername      String?  @map("delivery_username") @db.VarChar(100)
+  masoolUsername        String?  @map("masool_username") @db.VarChar(100)
+  sirajdeliveryUsername String?  @map("sirajdelivery_username") @db.VarChar(100)
+  lastLogged            DateTime @map("last_logged") @db.Timestamp(0)
+  hpattern              Int?
+  hlevel                Int?
+  hparent               Int?
+  addedBy               Int?
+  remarks               String?  @db.VarChar(50)
+  countryCode           String   @map("country_code") @db.VarChar(2)
+  connectStatus         String   @map("connect_status") @db.VarChar(10)
+  connectAuth           String?  @map("connect_auth") @db.VarChar(100)
+
+  @@map("organisation_master")
+}
+
+// Label per organisation level: 1 International, 2 National, 3 Chapter, 6 Region, 7 Division, 8 Unit.
+model HierarchyName {
+  hnid       Int     @id
+  hlevel     Int?
+  hlevelname String?
+
+  @@map("hierarchy_names")
+}
