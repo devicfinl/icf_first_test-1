@@ -78,7 +78,7 @@ model DomainItem {
   dname  String?
   dvalue String?
 
-  @@map(" ")
+  @@map("domain_items")
 }
 
 // The table has no primary key; code is unique in practice and this model is only read.

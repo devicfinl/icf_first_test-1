@@ -17,6 +17,8 @@ const schema = z.object({
   // Express's trust proxy setting. Needed behind a load balancer so rate limiting keys on the
   // real client IP rather than the proxy's. "" off, "true" on, a number of hops, or "loopback".
   TRUST_PROXY: z.string().default(""),
+  // Set to "true" by Render on its hosts. Render puts exactly one proxy in front of the app.
+  RENDER: z.string().default(""),
   // Requests per window, per IP. The auth limiter below is deliberately much tighter.
   RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).default(15),
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
@@ -59,7 +61,8 @@ export const env = {
   corsOrigins: raw.CORS_ORIGINS.split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean),
-  trustProxy: parseTrustProxy(raw.TRUST_PROXY),
+  // An explicit TRUST_PROXY wins; otherwise trust Render's single proxy hop when running there.
+  trustProxy: raw.TRUST_PROXY === "" && raw.RENDER === "true" ? 1 : parseTrustProxy(raw.TRUST_PROXY),
   rateLimitWindowMs: raw.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
   rateLimitMax: raw.RATE_LIMIT_MAX,
   authRateLimitMax: raw.AUTH_RATE_LIMIT_MAX,
