@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, MapPin, UserRound, UsersRound } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -168,6 +168,8 @@ function PositionCard({
 
 function SelectPositionPage() {
   const navigate = useNavigate();
+  // LoginPage passes the member's name along so the greeting shows without waiting on the profile.
+  const nameFromLogin = (useLocation().state as { name?: string } | null)?.name ?? null;
   const dispatch = useDispatch<AppDispatch>();
 
   const {
@@ -188,10 +190,11 @@ function SelectPositionPage() {
   }, [dispatch, token, positions.length]);
 
   useEffect(() => {
-    if (token && !profile) {
+    // Only needed when the page was opened without the login state (e.g. a direct visit).
+    if (token && !nameFromLogin && !profile) {
       void dispatch(fetchProfile());
     }
-  }, [dispatch, token, profile]);
+  }, [dispatch, token, nameFromLogin, profile]);
 
   const selectedId = chosenId ?? positions[0]?.id ?? null;
 
@@ -218,7 +221,7 @@ function SelectPositionPage() {
   const selected =
     positions.find((position) => position.id === selectedId) ?? null;
 
-  const name = profile?.name ?? null;
+  const name = nameFromLogin ?? profile?.name ?? null;
 
   return (
     <main className="min-h-screen bg-[#F8F5F0] flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-8">

@@ -15,7 +15,7 @@ export const memberLogin = async (req: Request, res: Response) => {
   try {
     const { userName, password } = (req.body ?? {}) as LoginBody;
 
-    const { token, position, positions, requiresPositionSelection } = await authService.login({
+    const { token, name, position, positions, requiresPositionSelection } = await authService.login({
       userName,
       password,
     });
@@ -30,6 +30,7 @@ export const memberLogin = async (req: Request, res: Response) => {
         token_type: "Bearer",
         expires_in: ACCESS_TOKEN_TTL_SECONDS,
       },
+      name,
       // The token already carries `position` when there is exactly one; with several, the member
       // picks from `positions` and calls select-position for a token that carries their choice.
       position,

@@ -114,15 +114,6 @@ Mounted at `/health`.
 
 Mounted at `/api/member`.
 
-### `users`
-
-- `users.routes.ts` exposes user listing and member-number lookup, both gated by `requireAuth` and `requireRole`.
-- `users.schema.ts` validates pagination and search parameters.
-- `users.controller.ts` handles request parameters and response formatting.
-- `users.service.ts` contains user lookup behavior.
-- `users.repository.ts` performs user queries against a fixed list of safe columns, which never includes `password`.
-
-Mounted at `/api/users`.
 
 ## Frontend
 

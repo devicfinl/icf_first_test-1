@@ -22,7 +22,6 @@ function LoginPage() {
   const { loading, error, token, requiresPositionSelection } = useSelector(
     (state: RootState) => state.auth,
   );
-  console.log("LoginPage: loading, error, token, requiresPositionSelection", loading, error, token, requiresPositionSelection);
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -49,7 +48,11 @@ function LoginPage() {
 
       // Several cabinet positions means the session has no committee context yet, and the member
       // has to pick one before anything else loads.
-      navigate(result.requires_position_selection ? "/select-position" : "/dashboard", { replace: true });
+      if (result.requires_position_selection) {
+        navigate("/select-position", { replace: true, state: { name: result.name } });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch {
       // The rejected message is already in the store and rendered below.
     }
