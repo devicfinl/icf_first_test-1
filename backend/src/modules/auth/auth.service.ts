@@ -58,6 +58,7 @@ export interface MemberPosition {
 
 interface LoginResult {
   token: string;
+  name: string;
   position: MemberPosition | null;
   positions: MemberPosition[];
   requiresPositionSelection: boolean;
@@ -157,6 +158,7 @@ export async function login({ userName, password }: LoginInput): Promise<LoginRe
 
   return {
     token: signAccessToken(user.id, user.userName, position && toSessionPosition(position)),
+    name: user.name,
     position,
     positions,
     requiresPositionSelection: positions.length > 1,

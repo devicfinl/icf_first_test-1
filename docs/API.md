@@ -63,6 +63,7 @@ Signs in with a membership number and password. Public, tightly rate limited.
 ```json
 {
   "auth": { "token": "…", "token_type": "Bearer", "expires_in": 900 },
+  "name": "Muhammed Ali",
   "position": { "id": 12, "designation": { "id": 7, "name": "Secretary", "level": 1 },
                 "organisation": { "id": 500, "name": "Dubai Chapter", "level": "Chapter" } },
   "positions": [ ],

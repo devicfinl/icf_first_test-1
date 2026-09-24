@@ -25,6 +25,8 @@ export type MemberPosition = {
 
 export type LoginData = {
   auth: AuthToken;
+  /** The member's display name (users.name). */
+  name: string;
   /** Already applied to the token when the member holds exactly one cabinet position. */
   position: MemberPosition | null;
   positions: MemberPosition[];
