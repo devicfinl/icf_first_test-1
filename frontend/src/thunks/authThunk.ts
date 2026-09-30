@@ -1,9 +1,10 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import api, { apiErrorMessage, unwrap } from "../api/axios";
-import { clearSession, setSession, updateToken } from "../lib/session";
+import { clearSession, getToken, setSession, updateToken } from "../lib/session";
 import type {
   ApiEnvelope,
   ChangePasswordData,
+  CurrentSessionData,
   LoginData,
   MemberProfile,
   PositionsData,
@@ -39,6 +40,38 @@ export const loginUser = createAsyncThunk<
     return thunkAPI.rejectWithValue(apiErrorMessage(error, "Login failed"));
   }
 });
+
+/* -------------------------------------------------- restore on load */
+
+/**
+ * Verifies the stored token once when the app starts. A 401 here signs the member out through the
+ * axios interceptor; any other failure (the API asleep or unreachable) keeps the stored session,
+ * and the next request that does get through settles it.
+ */
+export const restoreSession = createAsyncThunk<CurrentSessionData, void, ThunkConfig>(
+  "auth/restoreSession",
+  async (_, thunkAPI) => {
+    try {
+      const { data } = await api.get<ApiEnvelope<CurrentSessionData>>("/auth/me");
+      const result = unwrap(data);
+
+      const token = getToken();
+      if (token) {
+        setSession({
+          token,
+          membershipNo: result.membership_no,
+          position: result.position,
+          positions: result.positions,
+          requiresPositionSelection: result.requires_position_selection,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(apiErrorMessage(error, "Could not check your session"));
+    }
+  },
+);
 
 /* -------------------------------------------------- committee position */
 

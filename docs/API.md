@@ -128,6 +128,26 @@ once.
 Spends the reset token. A session token is not accepted here, and the reset token is revoked on
 use. Minimum 8 characters.
 
+## `GET /api/auth/me` *(auth)*
+
+Verifies the caller's token and returns the session behind it. The app calls this once on load to
+restore a stored session; a missing, invalid, expired or revoked token is a 401, as is a disabled
+account.
+
+```json
+{
+  "membership_no": "OM2400110",
+  "name": "…",
+  "position": { "id": 7, "designation": { … }, "organisation": { … } },
+  "positions": [ … ],
+  "requires_position_selection": false,
+  "expires_at": 1790000000
+}
+```
+
+`position` is the context the token carries, checked against the member's current positions.
+`expires_at` is the token's expiry in seconds since the epoch.
+
 ## `POST /api/auth/logout` *(auth)*
 
 Revokes the caller's token. The denylist is in memory, so a revoked token becomes usable again if

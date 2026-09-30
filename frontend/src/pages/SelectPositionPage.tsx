@@ -21,6 +21,7 @@ import {
   fetchProfile,
   selectPosition,
 } from "../thunks/authThunk";
+import SessionLoading from "../components/SessionLoading";
 import type { AppDispatch, RootState } from "../store/store";
 import type { MemberPosition } from "../types/auth";
 import { toNormalCase } from "../utilities/textCase";
@@ -174,6 +175,7 @@ function SelectPositionPage() {
 
   const {
     token,
+    sessionChecked,
     positions,
     requiresPositionSelection,
     loading,
@@ -184,10 +186,10 @@ function SelectPositionPage() {
   const [chosenId, setChosenId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (token && positions.length === 0) {
+    if (token && sessionChecked && positions.length === 0) {
       void dispatch(fetchPositions());
     }
-  }, [dispatch, token, positions.length]);
+  }, [dispatch, token, sessionChecked, positions.length]);
 
   useEffect(() => {
     // Only needed when the page was opened without the login state (e.g. a direct visit).
@@ -197,6 +199,10 @@ function SelectPositionPage() {
   }, [dispatch, token, nameFromLogin, profile]);
 
   const selectedId = chosenId ?? positions[0]?.id ?? null;
+
+  if (token && !sessionChecked) {
+    return <SessionLoading />;
+  }
 
   if (!token) {
     return <Navigate to="/login" replace />;

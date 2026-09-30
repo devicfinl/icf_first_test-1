@@ -21,7 +21,12 @@ api.interceptors.response.use(
   (error: AxiosError<ApiEnvelope<unknown>>) => {
     // 401 means this token is finished — expired, revoked by a sign-out elsewhere, or replaced by
     // select-position / change-password. Drop it so the app stops sending a token it knows is dead.
-    if (error.response?.status === 401) {
+    //
+    // Only when the rejected token is still the stored one, though: a 401 from sign-in (wrong
+    // password) carried no token, and another tab may already have swapped in a fresh one that
+    // must not be thrown away.
+    const sent = error.config?.headers?.Authorization;
+    if (error.response?.status === 401 && sent && sent === `Bearer ${getToken()}`) {
       clearSession();
       notifyExpired();
     }

@@ -5,10 +5,14 @@ process.env.JWT_SECRET ??= "test-secret";
 
 let databaseReachable = true;
 
-mock.module("./health.repository.js", {
+// A stand-in Prisma client, so no database is involved.
+mock.module("../../db/index.js", {
   exports: {
-    pingDatabase: async () => {
-      if (!databaseReachable) throw new Error("ECONNREFUSED 127.0.0.1:3307");
+    prisma: {
+      $queryRaw: async () => {
+        if (!databaseReachable) throw new Error("ECONNREFUSED 127.0.0.1:3307");
+        return [{ 1: 1 }];
+      },
     },
   },
 });

@@ -2,7 +2,7 @@ import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.JWT_SECRET ??= "test-secret";
-// Set before the service is imported: config/env.js reads the environment once, at load.
+// Set before the controller is imported: config/env.js reads the environment once, at load.
 process.env.MEMBER_PHOTO_BASE_URL = "https://photos.example.com/members/";
 
 type FakeAccount = { userName: string; active: number };
@@ -13,11 +13,14 @@ const accounts = new Map<number, FakeAccount>();
 const members = new Map<string, FakeMember>();
 const details = new Map<number, FakeDetails>();
 
-mock.module("./member.repository.js", {
+// A stand-in Prisma client answering the member controller's queries from the maps above.
+mock.module("../../db/index.js", {
   exports: {
-    findAccountStatusByUserId: async (id: number) => accounts.get(id) ?? null,
-    findMembershipByMembershipNo: async (no: string) => members.get(no) ?? null,
-    findMembershipDetailsByMid: async (mid: number) => details.get(mid) ?? null,
+    prisma: {
+      user: { findUnique: async ({ where }: any) => accounts.get(where.id) ?? null },
+      membershipMaster: { findFirst: async ({ where }: any) => members.get(where.membershipNo) ?? null },
+      membershipDetail: { findFirst: async ({ where }: any) => details.get(where.masterMid) ?? null },
+    },
   },
 });
 
@@ -32,7 +35,7 @@ const COUNTRY_BY_PHONE_CODE = new Map([["971", "United Arab Emirates"]]);
 const DESIGNATIONS = new Map([[7, "Secretary"]]);
 const CITIES = new Map([[3, "Dubai"]]);
 
-mock.module("../auth/reference-data.service.js", {
+mock.module("../../utils/reference-data.js", {
   exports: {
     resolveDomainValues: async (ids: Iterable<number>) =>
       new Map([...ids].flatMap((id) => (DOMAIN_VALUES.has(id) ? [[id, DOMAIN_VALUES.get(id)!] as const] : []))),
@@ -43,10 +46,22 @@ mock.module("../auth/reference-data.service.js", {
   },
 });
 
-const memberService = await import("./member.service.js");
+const { memberProfile } = await import("./member.controller.js");
+const { makeReq, makeRes } = await import("../../test/http.js");
+
+// Calls the profile endpoint as the given user and returns the profile. An error response is thrown
+// instead, carrying its status, so a test can assert on it with assert.rejects.
+async function getProfile(userId: number) {
+  const res = makeRes();
+  await memberProfile(makeReq({ auth: { userId: String(userId), jti: "test", exp: 0, position: null } }), res);
+  if (!res.body.success) {
+    throw Object.assign(new Error(res.body.message), { statusCode: res.statusCode });
+  }
+  return res.body.data.profile;
+}
 
 // A complete membership_master row. Legacy columns are NOT NULL and store "" for "no value",
-// which is exactly what the service has to translate back into null.
+// which is exactly what the controller has to translate back into null.
 function fullMember(overrides: FakeMember = {}): FakeMember {
   return {
     mid: 1,
@@ -91,12 +106,12 @@ function seed(id: number, member: FakeMember | null, detail: FakeDetails | null 
 /* ---------------------------------------------------------------- missing records */
 
 test("an unknown user id is a 404", async () => {
-  await assert.rejects(memberService.getProfile(9999), { statusCode: 404, message: "Member not found" });
+  await assert.rejects(getProfile(9999), { statusCode: 404, message: "Member not found" });
 });
 
 test("a disabled account is refused, even though the record exists", async () => {
   const id = seed(1, fullMember({ mid: 1, membershipNo: "MEM001" }), null, 0);
-  await assert.rejects(memberService.getProfile(id), {
+  await assert.rejects(getProfile(id), {
     statusCode: 401,
     message: "Your login is disabled",
   });
@@ -106,7 +121,7 @@ test("a disabled account is refused, even though the record exists", async () =>
 // joined by membership number, not by a foreign key.
 test("an account with no membership record is a 404, not a crash", async () => {
   const id = seed(2, null);
-  await assert.rejects(memberService.getProfile(id), {
+  await assert.rejects(getProfile(id), {
     statusCode: 404,
     message: "Membership record not found",
   });
@@ -121,7 +136,7 @@ test("a complete record maps every section", async () => {
     { gender: "Female", maritalStatus: "Y", emailId: "ada@example.com", city: 3, whatsAppNo: "500000001" },
   );
 
-  const profile = await memberService.getProfile(id);
+  const profile = await getProfile(id);
 
   assert.equal(profile.membership_no, "MEM003");
   assert.equal(profile.name, "Ada Lovelace");
@@ -143,7 +158,7 @@ test("a complete record maps every section", async () => {
 
 test("the profile never carries a password or an organisation access code", async () => {
   const id = seed(4, fullMember({ mid: 4, membershipNo: "MEM004" }));
-  const serialised = JSON.stringify(await memberService.getProfile(id));
+  const serialised = JSON.stringify(await getProfile(id));
 
   assert.ok(!/password/i.test(serialised), serialised);
   assert.ok(!/connectAuth|connect_auth/i.test(serialised), serialised);
@@ -155,7 +170,7 @@ test("the profile never carries a password or an organisation access code", asyn
 test("a member with no details row still gets a profile, with those fields null", async () => {
   const id = seed(5, fullMember({ mid: 5, membershipNo: "MEM005" }));
 
-  const profile = await memberService.getProfile(id);
+  const profile = await getProfile(id);
 
   assert.equal(profile.gender, null);
   assert.equal(profile.is_married, null);
@@ -179,7 +194,7 @@ test("blank legacy strings come back as null rather than empty strings", async (
     }),
   );
 
-  const profile = await memberService.getProfile(id);
+  const profile = await getProfile(id);
 
   assert.equal(profile.father_name, null);
   assert.equal(profile.contact.whatsapp, null);
@@ -191,7 +206,7 @@ test("blank legacy strings come back as null rather than empty strings", async (
 test("an unmapped reference id becomes null instead of an id leaking through", async () => {
   const id = seed(7, fullMember({ mid: 7, membershipNo: "MEM007", professionId: 999, bloodgroupId: 999 }));
 
-  const profile = await memberService.getProfile(id);
+  const profile = await getProfile(id);
 
   assert.equal(profile.background.profession, null);
   assert.equal(profile.background.blood_group, null);
@@ -199,21 +214,21 @@ test("an unmapped reference id becomes null instead of an id leaking through", a
 
 test("a zero designation is treated as none", async () => {
   const id = seed(8, fullMember({ mid: 8, membershipNo: "MEM008", cmtDesignation: 0 }));
-  assert.equal((await memberService.getProfile(id)).organisation.designation, null);
+  assert.equal((await getProfile(id)).organisation.designation, null);
 });
 
 /* ---------------------------------------------------------------- derived values */
 
 test("age is derived from the date of birth, and a malformed date yields null", async () => {
   const good = seed(9, fullMember({ mid: 9, membershipNo: "MEM009", dateOfBirth: "1990-06-15" }));
-  const profile = await memberService.getProfile(good);
+  const profile = await getProfile(good);
   assert.equal(typeof profile.age, "number");
   assert.ok(profile.age! >= 30 && profile.age! < 130, `unexpected age ${profile.age}`);
 
   // A handful of legacy rows hold things like "0000-00-00" or free text.
   for (const [id, dateOfBirth] of [[10, "0000-00-00"], [11, "not a date"], [12, ""]] as const) {
     const seeded = seed(id, fullMember({ mid: id, membershipNo: `MEM0${id}`, dateOfBirth }));
-    const result = await memberService.getProfile(seeded);
+    const result = await getProfile(seeded);
     assert.equal(result.age, null, `expected no age for ${JSON.stringify(dateOfBirth)}`);
   }
 });
@@ -221,7 +236,7 @@ test("age is derived from the date of birth, and a malformed date yields null", 
 test("the photo URL is built from the base address and escapes the file name", async () => {
   const id = seed(13, fullMember({ mid: 13, membershipNo: "MEM013", imageUrl: "a member photo.jpg" }));
 
-  const profile = await memberService.getProfile(id);
+  const profile = await getProfile(id);
 
   assert.equal(profile.photo_url, "https://photos.example.com/members/a%20member%20photo.jpg");
 });
@@ -231,7 +246,7 @@ test("marital status maps Y and N to booleans and anything else to null", async 
   const single = seed(15, fullMember({ mid: 15, membershipNo: "MEM015" }), { maritalStatus: "N" });
   const unknown = seed(16, fullMember({ mid: 16, membershipNo: "MEM016" }), { maritalStatus: "" });
 
-  assert.equal((await memberService.getProfile(married)).is_married, true);
-  assert.equal((await memberService.getProfile(single)).is_married, false);
-  assert.equal((await memberService.getProfile(unknown)).is_married, null);
+  assert.equal((await getProfile(married)).is_married, true);
+  assert.equal((await getProfile(single)).is_married, false);
+  assert.equal((await getProfile(unknown)).is_married, null);
 });
