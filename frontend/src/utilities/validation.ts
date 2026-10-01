@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-// These mirror backend/src/modules/auth/auth.schema.ts. They exist to catch mistakes before a
+// These mirror the schemas in backend/src/modules/auth/auth.controller.ts. They exist to catch mistakes before a
 // round trip, not to enforce the rules — the server validates everything again and its answer wins.
 
-// Membership numbers are 2 letters followed by 7 digits (e.g. "OM2400110"). Mirrors
-// backend/src/modules/auth/auth.schema.ts; the server validates again and its answer wins.
+// Membership numbers are 2 letters followed by 7 digits.
 const USERNAME_PATTERN = /^[A-Z]{2}\d{7}$/;
 
 export const loginSchema = z.object({
@@ -32,3 +31,9 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+
+export const cancelAccountSchema = z.object({
+  currentPassword: z.string().min(1, "Please enter your current password."),
+  confirm: z.literal(true, { error: "Please confirm that you want to cancel your account." }),
+});
+export type CancelAccountFormData = z.infer<typeof cancelAccountSchema>;

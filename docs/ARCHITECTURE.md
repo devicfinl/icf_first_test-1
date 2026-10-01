@@ -40,10 +40,15 @@ icf-first/
 │   │   │   ├── rate-limit.ts             # Per-IP limits
 │   │   │   └── request-context.ts        # Request id and access logging
 │   │   ├── modules/
-│   │   │   ├── auth/  health/  member/  users/
+│   │   │   ├── auth/
+│   │   │   │   ├── auth.routes.ts
+│   │   │   │   └── auth.controller.ts
+│   │   │   ├── health/
+│   │   │   │   ├── health.routes.ts
+│   │   │   │   └── health.controller.ts
 │   │   ├── test/                         # Test-only helpers, excluded from the build
 │   │   ├── types/express.d.ts            # Express request extensions
-│   │   └── utils/                        # Tokens, passwords, errors, responses, throttling
+│   │   └── utils/                        # Tokens, passwords, errors, responses, throttling, reference data
 │   └── package.json
 ├── frontend/
 │   ├── index.html
@@ -52,7 +57,7 @@ icf-first/
 │   │   ├── main.tsx                      # Entry point and providers
 │   │   ├── App.tsx                       # Routes
 │   │   ├── api/axios.ts                  # API client: token header, 401 handling, envelope
-│   │   ├── lib/session.ts                # Session persistence (sessionStorage)
+│   │   ├── lib/session.ts                # Session persistence (localStorage)
 │   │   ├── components/                   # Shared UI and the route guard
 │   │   ├── pages/                        # Screens
 │   │   ├── slices/ store/ thunks/        # Redux Toolkit state
@@ -64,27 +69,25 @@ icf-first/
 
 ## API modules
 
-Every feature module keeps its HTTP entry points and application logic together:
+Every feature module keeps its HTTP entry points, logic and input rules together in three files:
 
 ```text
 modules/<feature>/
 ├── <feature>.routes.ts       # HTTP verbs, paths, and middleware wiring
-├── <feature>.controller.ts   # Request parsing and response formatting
-├── <feature>.service.ts      # Business rules and use cases
-└── <feature>.repository.ts   # Database queries for the feature
+├── <feature>.controller.ts   # Request handling, business rules, database queries, response formatting
+└── <feature>.validation.ts   # zod schemas for body, query and params
 ```
 
-The repository layer is optional for modules that do not access the database directly, but services must still own business decisions. Routes should only compose middleware and controllers.
+The validation file is optional: `health` and `member` have none because they accept no input, and `auth` defines its schemas at the top of `auth.controller.ts`. Routes should only compose middleware and controllers. Controllers own the feature's logic and query the database through the shared Prisma client from `src/db`.
 
 ### `auth`
 
-- `auth.routes.ts` exposes member login, logout, forgot-password, reset-password, change-password, and the committee position endpoints (`GET /positions`, `POST /select-position`).
-- `auth.schema.ts` holds the zod request schemas; the validate middleware runs them before any controller.
-- `auth.controller.ts` translates HTTP requests into authentication service calls.
-- `auth.service.ts` handles identity checks, password verification, JWT creation, password resets and changes, per-account lockout, token revocation, and the committee position a session acts as.
-- `auth.repository.ts` reads and updates users, memberships, and committee positions.
-- `reference-data.service.ts` provides reusable display values such as countries, cities, domain items, hierarchy names, and committee designations, cached in memory for an hour. Lives here alongside `auth.service.ts`, which uses it to label committee positions on login; `member.service.ts` also imports it from here, for the bulk of the profile endpoint's display fields.
-- `reference-data.repository.ts` reads those values from the corresponding reference tables.
+The `auth` module has only two files.
+
+- `auth.routes.ts` exposes member login, logout, forgot-password, reset-password, change-password, and the committee position endpoints (`GET /positions`, `POST /select-position`). It passes the zod request schemas to the validate middleware, which runs before any controller.
+- `auth.controller.ts` defines the zod request schemas (login, select-position, change-password) and handles identity checks, password verification, JWT creation, password resets and changes, per-account lockout, token revocation, and the committee position a session acts as. It reads and updates users, memberships and committee positions through the shared Prisma client.
+
+Committee positions are labelled on login using `utils/reference-data.ts` (see Shared API infrastructure).
 
 Login returns the member's cabinet positions. One is applied to the session immediately; several
 require `POST /select-position`, which issues a replacement token carrying the chosen context and
@@ -99,20 +102,13 @@ Mounted at `/api/auth`.
 ### `health`
 
 - `health.routes.ts` exposes the health endpoint.
-- `health.controller.ts` formats the health response.
-- `health.service.ts` checks application dependencies through the repository.
-- `health.repository.ts` pings the database.
+- `health.controller.ts` pings the database and formats the health response.
+
+No validation file: the endpoint takes no input.
 
 Mounted at `/health`.
 
-### `member`
 
-- `member.routes.ts` protects the member profile endpoint with `requireAuth`.
-- `member.controller.ts` handles the authenticated profile request.
-- `member.service.ts` assembles member profile data.
-- `member.repository.ts` reads membership and related profile data.
-
-Mounted at `/api/member`.
 
 
 ## Frontend
@@ -123,8 +119,10 @@ navigation. `src/api/axios.ts` is the only place that talks to the API.
 - The API authenticates with a bearer token, not a cookie. A request interceptor attaches it and a
   response interceptor clears the session on a 401, so the app stops sending a token it knows is
   dead.
-- The session is kept in `sessionStorage` (`src/lib/session.ts`), so a refresh keeps the member
-  signed in for as long as the tab lives, and nothing is left behind once it closes.
+- The session is kept in `localStorage` (`src/lib/session.ts`), so it is shared by every tab and
+  survives a reload until sign-out or token expiry. On load the store verifies it once with
+  `GET /api/auth/me` (`restoreSession`); guarded screens show a loading state until that finishes.
+  Tabs follow each other's sign-in, token swaps and sign-out through the `storage` event.
 - `components/ProtectedLayout.tsx` guards the signed-in area and sends a member who holds several
   committee positions to the picker before anything else loads.
 - `select-position` and `change-password` return a replacement token, which the thunks store before
@@ -144,21 +142,15 @@ app.ts
     ├── per-IP rate limiting
     ├── module router
     └── 404 / error handling
-	    │
-	    ▼
-    routes.ts      ── require-auth, require-role, validate, then the controller
-	    │
-	    ▼
-    controller.ts  ── response mapping; input is already validated
-	    │
-	    ▼
-    service.ts     ── business rules and use cases
-	    │
-	    ▼
-    repository.ts  ── database queries
-	    │
-	    ▼
-    src/db         ── Prisma client and MySQL
+        │
+        ▼
+    <feature>.routes.ts      ── require-auth, require-role, validate (<feature>.validation.ts), then the controller
+        │
+        ▼
+    <feature>.controller.ts  ── business rules, database queries, response mapping; input is already validated
+        │
+        ▼
+    src/db                   ── Prisma client and MySQL
 ```
 
 ## Shared API infrastructure
@@ -166,9 +158,10 @@ app.ts
 - `config/env.ts` reads and validates every runtime setting once at startup, so a missing or malformed value fails immediately with a clear message.
 - `middlewares/require-auth.ts` verifies bearer tokens and attaches authenticated claims to `req.auth`.
 - `middlewares/require-role.ts` gates administrative routes, re-reading the caller's tier from the database on every request so revoking access takes effect at once.
-- `middlewares/validate.ts` checks requests against zod schemas before a controller runs, and rejects unknown fields.
+- `middlewares/validate.ts` checks requests against the module's zod schemas before a controller runs, and rejects unknown fields.
 - `middlewares/rate-limit.ts` applies per-IP limits, tighter on the unauthenticated auth endpoints.
 - `middlewares/request-context.ts` tags each request with an id, echoes it as `X-Request-Id`, and logs method, path, status and duration — never bodies or headers.
+- `utils/reference-data.ts` provides reusable display values such as countries, cities, domain items, hierarchy names, and committee designations, read from the reference tables and cached in memory for an hour. Used by the `auth` and `member` controllers.
 - `utils/jwt.ts` signs and verifies access and password-reset tokens.
 - `utils/password.ts` hashes and verifies passwords.
 - `utils/attempt-limiter.ts` throttles repeated login failures against one identity. IP limiting alone would not cover an attacker who changes address.
@@ -180,19 +173,19 @@ app.ts
 
 ## Database access
 
-`src/db` is the only place that creates and exports the Prisma client. Repositories import it from there; they never construct their own.
+`src/db` is the only place that creates and exports the Prisma client. Controllers and shared utilities import it from there; they never construct their own.
 
 The Prisma schema maps to the existing MySQL database, including `User`, `MembershipMaster`, `MembershipDetail`, `OrganisationUnit`, and reference-data models. Several models are intentionally partial representations of existing tables. Do not run `prisma migrate` or `prisma db push` against this database unless the schema strategy has been reviewed first.
 
 ## Architectural rules
 
+- Each module contains only `<feature>.routes.ts`, `<feature>.controller.ts` and, where needed, `<feature>.validation.ts` (`auth` has routes and controller only); code shared between modules belongs in `utils/`.
 - Routes only map HTTP methods and paths to middleware and controllers.
-- Controllers handle transport concerns; business logic belongs in services.
-- Repositories are the database boundary for each module.
+- Controllers own the feature's business logic and database queries.
 - API code must use the shared Prisma client from `src/db`.
-- Request bodies, query strings and route parameters are validated at the route boundary, not inside services.
+- Request bodies, query strings and route parameters are validated at the route boundary with zod schemas (from the module's `validation.ts`, or exported from `auth.controller.ts` for `auth`); the handlers themselves do not re-check request shape.
 - Administrative routes must be gated by `require-role.ts`, never by a client-supplied role.
-- Repositories that read `users` must select an explicit column list, never the whole row.
+- Queries that read `users` must select an explicit column list, never the whole row.
 - Protected endpoints must use `require-auth.ts`.
 - Access tokens, reset tokens, and revoked tokens must remain distinct by token purpose.
 - Sensitive values such as passwords and token secrets must never appear in API responses or logs.

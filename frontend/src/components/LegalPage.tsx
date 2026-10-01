@@ -14,8 +14,8 @@ type Props = {
 };
 
 /**
- * The frame for the privacy policy and terms. Both are public, so they work signed in or out; the
- * back link goes to wherever the reader most likely came from.
+ * The frame for the public pages (privacy policy, terms, support, account deletion). They work
+ * signed in or out; the back link goes to wherever the reader most likely came from.
  */
 function LegalPage({ title, updated, children }: Props) {
   const token = useSelector((state: RootState) => state.auth.token);
@@ -88,30 +88,39 @@ export function LegalList({ items }: { items: [label: string, text: string][] | 
   );
 }
 
+/** Where members write for help. Change it here and every page follows. */
+export const SUPPORT_EMAIL = "icfintl@icfonline.org";
+
 export function LegalContact() {
   return (
     <address className="rounded-xl bg-shell px-4 py-3 not-italic">
       <p className="font-semibold text-foreground">ICF International</p>
       <p>
         Email:{" "}
-        <a href="mailto:icfintl@icfonline.org" className="text-blue-700 underline-offset-2 hover:underline">
-          icfintl@icfonline.org
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-700 underline-offset-2 hover:underline">
+          {SUPPORT_EMAIL}
         </a>
       </p>
     </address>
   );
 }
 
-/** The two links every footer carries. */
+const FOOTER_LINKS = [
+  ["/privacyPolicy", "Privacy Policy"],
+  ["/termsAndConditions", "Terms & Conditions"],
+  ["/support", "Support"],
+  ["/deleteAccount", "Account Deletion"],
+] as const;
+
+/** The links every footer carries. */
 export function LegalLinks({ className = "" }: { className?: string }) {
   return (
     <nav aria-label="Legal" className={`flex flex-wrap gap-x-4 gap-y-1 text-xs ${className}`}>
-      <Link to="/privacy-policy" className="text-muted-foreground hover:text-foreground hover:underline">
-        Privacy Policy
-      </Link>
-      <Link to="/terms" className="text-muted-foreground hover:text-foreground hover:underline">
-        Terms &amp; Conditions
-      </Link>
+      {FOOTER_LINKS.map(([to, label]) => (
+        <Link key={to} to={to} className="text-muted-foreground hover:text-foreground hover:underline">
+          {label}
+        </Link>
+      ))}
     </nav>
   );
 }

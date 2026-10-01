@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import LegalPage, {
   LegalContact,
   LegalList,
@@ -10,7 +11,7 @@ import LegalPage, {
 // anything else that collects new data ships.
 function PrivacyPolicyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="23 September 2026">
+    <LegalPage title="Privacy Policy" updated="1 October 2026">
       <LegalSection title="1. Introduction">
         <p>
           Welcome to ICF FIRST, the member portal developed and operated by ICF International ("we", "us",
@@ -142,6 +143,15 @@ function PrivacyPolicyPage() {
           as it is needed to maintain membership records. Server logs are kept only as long as needed for
           security and troubleshooting. When information is no longer needed, we delete or anonymise it,
           except where we must keep it for legal, regulatory, or legitimate organisational purposes.
+        </p>
+        <p>
+          If you cancel your ICF FIRST account, you can no longer sign in, but your membership, committee,
+          donation and subscription records are kept as part of ICF International's organisational records.
+          See{" "}
+          <Link to="/deleteAccount" className="text-blue-700 underline-offset-2 hover:underline">
+            Account Deletion
+          </Link>
+          .
         </p>
       </LegalSection>
 

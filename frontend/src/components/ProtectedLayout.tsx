@@ -1,14 +1,22 @@
 import { useSelector } from "react-redux";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import type { RootState } from "../store/store";
+import SessionLoading from "./SessionLoading";
 
 /**
  * Guards the signed-in area. A member who holds several committee positions is sent to the picker
  * first: until they choose, their token carries no committee context.
  */
 function ProtectedLayout() {
-  const { token, requiresPositionSelection } = useSelector((state: RootState) => state.auth);
+  const { token, sessionChecked, requiresPositionSelection } = useSelector(
+    (state: RootState) => state.auth,
+  );
   const location = useLocation();
+
+  // A stored token is still being verified: deciding now could redirect on a stale answer.
+  if (token && !sessionChecked) {
+    return <SessionLoading />;
+  }
 
   if (!token) {
     // `from` lets the sign-in screen send them back where they were headed.

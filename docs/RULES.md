@@ -1,7 +1,7 @@
 # Development Rules
 
 ## General
-- Use consistent module structure: `routes → controller → service → repository`.
+- Use consistent module structure: `<feature>.routes.ts`, `<feature>.controller.ts` and, where the endpoints take input, `<feature>.validation.ts` (see `docs/ARCHITECTURE.md`).
 - Reuse existing utilities/middlewares — don't duplicate logic across modules.
 - Keep functions small and single-purpose.
 - Do not modify unrelated files/modules when implementing a feature.
@@ -12,11 +12,11 @@
 - For anything touching more than one module, write a short plan first.
 
 ## Backend
-- Controllers: parse request, call service, return response. No business logic, no Prisma.
-- Services: business rules and validation. Never import `@prisma/client` directly.
-- Repositories: the only layer allowed to call `prisma.*`.
-- Use the shared `prisma` instance from `src/config/db.js` — never `new PrismaClient()` elsewhere.
-- Validate all request bodies/params before they reach the service layer.
+- Routes: map HTTP methods and paths to middleware and controllers. Nothing else.
+- Controllers: business rules, database queries and the response for their feature.
+- Code used by more than one module goes in `src/utils/`, not in another module's folder.
+- Use the shared `prisma` instance from `src/db` — never `new PrismaClient()` elsewhere.
+- Validate all request bodies/params with zod at the route, before they reach the controller.
 
 ## Security
 - Never commit `.env` or real API keys — only `.env.example` goes into Git.

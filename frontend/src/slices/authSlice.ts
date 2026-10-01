@@ -1,19 +1,26 @@
 import { createSlice, isAnyOf } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import {
+  cancelAccount,
   changePassword,
   fetchPositions,
   fetchProfile,
   loginUser,
   logoutUser,
+  restoreSession,
   selectPosition,
 } from "../thunks/authThunk";
 import { clearSession, getSession } from "../lib/session";
-import type { MemberPosition, MemberProfile } from "../types/auth";
+import type { MemberPosition, MemberProfile, Session } from "../types/auth";
 
 type AuthState = {
   /** Null means signed out; every guarded route keys off this. */
   token: string | null;
+  /**
+   * False while a stored token is being verified on load (restoreSession). Guarded routes wait on
+   * this instead of acting on a token that may turn out to be expired.
+   */
+  sessionChecked: boolean;
   membershipNo: string | null;
   /** The committee context this session acts as, once one applies. */
   position: MemberPosition | null;
@@ -33,13 +40,15 @@ type AuthState = {
   profileError: string | null;
 };
 
-// Rehydrate from sessionStorage so a refresh keeps the member signed in for as long as the tab
-// (and the token) lives. An expired token is discovered on the first request, which 401s and
+// Rehydrate from localStorage so a reload or a new tab keeps the member signed in. The token is
+// then verified once through restoreSession (dispatched from the store); an expired one 401s and
 // clears the session through the axios interceptor.
 const stored = getSession();
 
 const initialState: AuthState = {
   token: stored?.token ?? null,
+  // With nothing stored there is nothing to verify.
+  sessionChecked: !stored,
   membershipNo: stored?.membershipNo ?? null,
   position: stored?.position ?? null,
   positions: stored?.positions ?? [],
@@ -53,6 +62,7 @@ const initialState: AuthState = {
 
 function signedOut(state: AuthState): void {
   state.token = null;
+  state.sessionChecked = true;
   state.membershipNo = null;
   state.position = null;
   state.positions = [];
@@ -75,6 +85,22 @@ const authSlice = createSlice({
     clearError(state) {
       state.error = null;
     },
+    /** Another tab signed in or swapped the token; this tab follows along. */
+    sessionReplaced(state, action: PayloadAction<Session>) {
+      const changedMember = state.membershipNo !== action.payload.membershipNo;
+      state.token = action.payload.token;
+      state.sessionChecked = true;
+      state.membershipNo = action.payload.membershipNo;
+      state.position = action.payload.position;
+      state.positions = action.payload.positions;
+      state.requiresPositionSelection = action.payload.requiresPositionSelection;
+      if (changedMember) state.profile = null;
+    },
+    /** Another tab signed out. */
+    signedOutElsewhere(state) {
+      signedOut(state);
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -82,10 +108,23 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = null;
         state.token = action.payload.auth.token;
+        state.sessionChecked = true;
         state.membershipNo = action.payload.membershipNo;
         state.position = action.payload.position;
         state.positions = action.payload.positions;
         state.requiresPositionSelection = action.payload.requires_position_selection;
+      })
+
+      .addCase(restoreSession.fulfilled, (state, action) => {
+        state.sessionChecked = true;
+        state.membershipNo = action.payload.membership_no;
+        state.position = action.payload.position;
+        state.positions = action.payload.positions;
+        state.requiresPositionSelection = action.payload.requires_position_selection;
+      })
+      .addCase(restoreSession.rejected, (state) => {
+        // A 401 has already signed the member out; anything else keeps the stored session.
+        state.sessionChecked = true;
       })
 
       .addCase(fetchPositions.fulfilled, (state, action) => {
@@ -127,10 +166,21 @@ const authSlice = createSlice({
         state.error = null;
       })
 
+      .addCase(cancelAccount.fulfilled, (state) => {
+        signedOut(state);
+        state.error = null;
+      })
+
       // Everything else shares one pending/rejected shape, so the forms can read `loading`
       // and `error` without each thunk needing its own three cases.
       .addMatcher(
-        isAnyOf(loginUser.pending, fetchPositions.pending, selectPosition.pending, changePassword.pending),
+        isAnyOf(
+          loginUser.pending,
+          fetchPositions.pending,
+          selectPosition.pending,
+          changePassword.pending,
+          cancelAccount.pending,
+        ),
         (state) => {
           state.loading = true;
           state.error = null;
@@ -142,6 +192,7 @@ const authSlice = createSlice({
           fetchPositions.rejected,
           selectPosition.rejected,
           changePassword.rejected,
+          cancelAccount.rejected,
         ),
         (state, action: PayloadAction<string | undefined>) => {
           state.loading = false;
@@ -151,7 +202,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { sessionExpired, clearError } = authSlice.actions;
+export const { sessionExpired, clearError, sessionReplaced, signedOutElsewhere } = authSlice.actions;
 
 /**
  * Signs out without calling the API. Use `logoutUser` for a real sign-out: it revokes the token

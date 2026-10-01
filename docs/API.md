@@ -128,11 +128,42 @@ once.
 Spends the reset token. A session token is not accepted here, and the reset token is revoked on
 use. Minimum 8 characters.
 
+## `GET /api/auth/me` *(auth)*
+
+Verifies the caller's token and returns the session behind it. The app calls this once on load to
+restore a stored session; a missing, invalid, expired or revoked token is a 401, as is a disabled
+account.
+
+```json
+{
+  "membership_no": "OM2400110",
+  "name": "…",
+  "position": { "id": 7, "designation": { … }, "organisation": { … } },
+  "positions": [ … ],
+  "requires_position_selection": false,
+  "expires_at": 1790000000
+}
+```
+
+`position` is the context the token carries, checked against the member's current positions.
+`expires_at` is the token's expiry in seconds since the epoch.
+
 ## `POST /api/auth/logout` *(auth)*
 
 Revokes the caller's token. The denylist is in memory, so a revoked token becomes usable again if
 the process restarts before it would have expired — move it to Redis or a table before running
 more than one instance.
+
+## `POST /api/auth/cancel-account` *(auth)*
+
+```json
+{ "currentPassword": "…", "confirm": true }
+```
+
+Cancels the member's portal account: sets `users.active = 0` and revokes the caller's token, so
+later sign-ins get `401 Your login is disabled`. Nothing is deleted — the membership record,
+donations and subscription history stay. The office restores access by setting `active` back to 1.
+`401` for a wrong password; `400` if `confirm` is not `true`. Uses the tight auth rate limit.
 
 ---
 

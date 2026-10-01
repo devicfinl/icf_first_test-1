@@ -63,7 +63,7 @@ This is the active roadmap for the ICF member portal. Completed items reflect th
 
 - [x] React + Vite app wired to the API (`npm run dev` runs both; Vite proxies `/api`)
 - [x] Typed API client for the response envelope, with bearer token and 401 handling
-- [x] Session persistence in `sessionStorage`, surviving a refresh
+- [x] Session persistence in `localStorage`, surviving a refresh and shared across tabs, verified on load via `GET /api/auth/me`
 - [x] Login screen (membership number + password)
 - [x] Committee position selection after login, and the position shown on the profile
 - [x] Member profile screen

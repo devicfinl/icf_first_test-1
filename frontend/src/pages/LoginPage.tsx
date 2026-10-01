@@ -1,7 +1,7 @@
 import * as Form from "@radix-ui/react-form";
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Text } from "@radix-ui/themes";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -18,6 +18,9 @@ import type { AppDispatch, RootState } from "../store/store";
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where to go after signing in, when a page sent the member here (e.g. /deleteAccount).
+  const from = (location.state as { from?: string } | null)?.from;
   const dispatch = useDispatch<AppDispatch>();
   const { loading, error, token, requiresPositionSelection } = useSelector(
     (state: RootState) => state.auth,
@@ -38,7 +41,7 @@ function LoginPage() {
 
   // Already signed in (a refresh, or the back button after signing in).
   if (token) {
-    return <Navigate to={requiresPositionSelection ? "/select-position" : "/"} replace />;
+    return <Navigate to={requiresPositionSelection ? "/select-position" : (from ?? "/")} replace />;
   }
 
   async function onSubmit(data: LoginFormData) {
@@ -51,7 +54,7 @@ function LoginPage() {
       if (result.requires_position_selection) {
         navigate("/select-position", { replace: true, state: { name: result.name } });
       } else {
-        navigate("/dashboard", { replace: true });
+        navigate(from ?? "/dashboard", { replace: true });
       }
     } catch {
       // The rejected message is already in the store and rendered below.

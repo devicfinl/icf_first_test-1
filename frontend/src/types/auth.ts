@@ -33,7 +33,18 @@ export type LoginData = {
   requires_position_selection: boolean;
 };
 
-export type SelectPositionData = { auth: AuthToken; position: MemberPosition };
+/** GET /auth/me: the session behind the caller's token, used to restore it on page load. */
+export type CurrentSessionData = {
+  membership_no: string;
+  name: string;
+  position: MemberPosition | null;
+  positions: MemberPosition[];
+  requires_position_selection: boolean;
+  /** Seconds since the epoch. */
+  expires_at: number;
+};
+
+export type SelectPositionData ={ auth: AuthToken; position: MemberPosition };
 export type ChangePasswordData = { auth: AuthToken };
 export type PositionsData = { positions: MemberPosition[] };
 

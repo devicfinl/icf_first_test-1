@@ -56,7 +56,7 @@ function TermsPage() {
       <LegalSection title="6. Privacy">
         <p>
           Our{" "}
-          <Link to="/privacy-policy" className="text-blue-700 underline-offset-2 hover:underline">
+          <Link to="/privacyPolicy" className="text-blue-700 underline-offset-2 hover:underline">
             Privacy Policy
           </Link>{" "}
           explains how we collect and use your personal information.

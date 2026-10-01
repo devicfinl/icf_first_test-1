@@ -14,11 +14,11 @@ export interface ValidatedRequest {
   params?: unknown;
 }
 
-// Checks a request against zod schemas before any controller or service sees it, so the layers
-// below can trust their input. Schemas built with z.strictObject also reject unknown fields,
+// Checks a request against zod schemas before any controller sees it, so the controller can
+// trust its input. Schemas built with z.strictObject also reject unknown fields,
 // which keeps a client from smuggling in a property a future version might start reading.
 //
-// A failure is always a 400 with a field-by-field list; it never reaches the service layer.
+// A failure is always a 400 with a field-by-field list; it never reaches the controller.
 export function validate(schemas: Schemas) {
   const sources = Object.keys(schemas) as Source[];
 

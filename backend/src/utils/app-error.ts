@@ -1,5 +1,5 @@
-// Thrown by services (and middleware) when a request breaks a rule; the controller turns it into
-// an HTTP response with this status, so services never need to know about Express.
+// Thrown by controllers, shared utilities and middleware when a request breaks a rule; the
+// controller's handleError (or the global error handler) turns it into a response with this status.
 //
 // Status codes carry meaning across every module, so pick from the same set everywhere:
 //   400 the request itself is malformed or incomplete

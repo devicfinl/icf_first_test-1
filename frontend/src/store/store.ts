@@ -1,6 +1,7 @@
 import { configureStore } from "@reduxjs/toolkit";
-import authReducer, { sessionExpired } from "../slices/authSlice";
-import { setOnExpired } from "../lib/session";
+import authReducer, { sessionExpired, sessionReplaced, signedOutElsewhere } from "../slices/authSlice";
+import { onSessionChangedElsewhere, setOnExpired } from "../lib/session";
+import { restoreSession } from "../thunks/authThunk";
 
 const store = configureStore({
   reducer: {
@@ -14,6 +15,17 @@ const store = configureStore({
 setOnExpired(() => {
   store.dispatch(sessionExpired());
 });
+
+// Tabs share one stored session, so a sign-in, token swap or sign-out in one is mirrored here.
+onSessionChangedElsewhere((session) => {
+  store.dispatch(session ? sessionReplaced(session) : signedOutElsewhere());
+});
+
+// Verify a stored token once per page load. Dispatched here rather than from a component so
+// StrictMode's double-run effects can't send it twice.
+if (store.getState().auth.token) {
+  void store.dispatch(restoreSession());
+}
 
 export default store;
 export type RootState = ReturnType<typeof store.getState>;

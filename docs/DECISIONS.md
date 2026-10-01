@@ -40,7 +40,7 @@ Decision: Store media files in external/cloud storage rather than in MySQL.
 
 Reason: Binary files should not be stored directly in relational database tables. External object storage keeps the database smaller and separates structured application data from media assets.
 
-ADR-007
+ADR-007 (superseded by ADR-026)
 
 Decision: Controllers must remain thin and business logic must belong to services.
 
@@ -54,7 +54,7 @@ Services handle business logic.
 
 Services must not construct HTTP responses.
 
-ADR-008
+ADR-008 (superseded by ADR-026)
 
 Decision: Database access must be isolated in repositories.
 
@@ -68,7 +68,7 @@ Services should use repositories for database operations.
 
 Do not create separate Prisma clients inside modules.
 
-ADR-009
+ADR-009 (superseded by ADR-026)
 
 Decision: Request validation and business validation are separate responsibilities.
 
@@ -138,7 +138,7 @@ Decision: Keep reference-data retrieval centralized and reusable.
 
 Reason: Multiple modules require common reference data such as designations, countries, cities, units, and other lookup values. Centralizing this logic prevents duplicate database queries and inconsistent implementations.
 
-Rule: Reuse the existing reference-data service instead of creating separate implementations inside individual modules.
+Rule: Reuse `src/utils/reference-data.ts` instead of creating separate implementations inside individual modules.
 
 ADR-014
 
@@ -311,3 +311,23 @@ Make the smallest appropriate change.
 Avoid unrelated refactoring.
 
 Create a new architectural decision when the requested change alters system architecture.
+
+ADR-026
+
+Decision: Each API module is two or three files: `<feature>.routes.ts`, `<feature>.controller.ts` and, where the endpoints take input, `<feature>.validation.ts`. The separate service and repository layers are removed. This supersedes ADR-007, ADR-008 and ADR-009.
+
+Reason: For modules this size, the service and repository files mostly forwarded calls, so every change touched four files per feature. One controller per feature keeps a use case readable in one place.
+
+Rule:
+
+Routes compose middleware and controllers only.
+
+Controllers own the feature's business rules and database queries, and build the response.
+
+Controllers query through the shared Prisma client from `src/db` (ADR-011 still applies) and select explicit columns from `users`.
+
+Request shape is validated with zod at the route boundary; controllers trust validated input and keep only database-dependent checks (does the account exist, is the password right).
+
+Code shared between modules, such as reference data, lives in `src/utils/`.
+
+Tests exercise the controller handlers against a stand-in Prisma client, and the route schemas through the validate middleware.
