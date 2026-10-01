@@ -93,13 +93,17 @@ export const SUPPORT_EMAIL = "icfintl@icfonline.org";
 
 export function LegalContact() {
   return (
-    <address className="rounded-xl bg-shell px-4 py-3 not-italic">
+    <address className="space-y-2 rounded-xl bg-shell px-4 py-3 not-italic">
       <p className="font-semibold text-foreground">ICF International</p>
       <p>
         Email:{" "}
         <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-700 underline-offset-2 hover:underline">
           {SUPPORT_EMAIL}
         </a>
+      </p>
+      <p>
+        Or contact the leaders of your higher committee in the ICF organisation (the committee above your
+        unit), who can help you directly or pass your request on.
       </p>
     </address>
   );
