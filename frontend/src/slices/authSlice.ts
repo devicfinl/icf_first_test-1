@@ -1,6 +1,7 @@
 import { createSlice, isAnyOf } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import {
+  cancelAccount,
   changePassword,
   fetchPositions,
   fetchProfile,
@@ -165,10 +166,21 @@ const authSlice = createSlice({
         state.error = null;
       })
 
+      .addCase(cancelAccount.fulfilled, (state) => {
+        signedOut(state);
+        state.error = null;
+      })
+
       // Everything else shares one pending/rejected shape, so the forms can read `loading`
       // and `error` without each thunk needing its own three cases.
       .addMatcher(
-        isAnyOf(loginUser.pending, fetchPositions.pending, selectPosition.pending, changePassword.pending),
+        isAnyOf(
+          loginUser.pending,
+          fetchPositions.pending,
+          selectPosition.pending,
+          changePassword.pending,
+          cancelAccount.pending,
+        ),
         (state) => {
           state.loading = true;
           state.error = null;
@@ -180,6 +192,7 @@ const authSlice = createSlice({
           fetchPositions.rejected,
           selectPosition.rejected,
           changePassword.rejected,
+          cancelAccount.rejected,
         ),
         (state, action: PayloadAction<string | undefined>) => {
           state.loading = false;

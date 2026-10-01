@@ -10,6 +10,8 @@ import ProfilePage from "./pages/ProfilePage";
 import DashboardPage from "./pages/DashboardPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsPage from "./pages/TermsPage";
+import SupportPage from "./pages/SupportPage";
+import DeleteAccountPage from "./pages/DeleteAccountPage";
 
 function App() {
   return (
@@ -18,9 +20,14 @@ function App() {
         {/* Signed out */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Public either way. */}
-        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-        <Route path="/terms" element={<TermsPage />} />
+        {/* Public either way. These paths are listed in the app stores, so keep them stable. */}
+        <Route path="/privacyPolicy" element={<PrivacyPolicyPage />} />
+        <Route path="/termsAndConditions" element={<TermsPage />} />
+        <Route path="/support" element={<SupportPage />} />
+        <Route path="/deleteAccount" element={<DeleteAccountPage />} />
+        {/* Earlier paths, kept so old links still work. */}
+        <Route path="/privacy-policy" element={<Navigate to="/privacyPolicy" replace />} />
+        <Route path="/terms" element={<Navigate to="/termsAndConditions" replace />} />
 
         {/* Needs a token, but runs before a committee position has been chosen. */}
         <Route path="/select-position" element={<SelectPositionPage />} />

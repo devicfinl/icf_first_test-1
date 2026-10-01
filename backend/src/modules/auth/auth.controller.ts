@@ -56,9 +56,16 @@ export const changePasswordBody = z
     path: ["newPassword"],
   });
 
+// Cancelling an account: the password proves it's the member, and `confirm` that they meant it.
+export const cancelAccountBody = z.strictObject({
+  currentPassword: text("Please enter your current password.").min(1, "Please enter your current password."),
+  confirm: z.literal(true, { error: "Please confirm that you want to cancel your account." }),
+});
+
 export type LoginBody = z.infer<typeof loginBody>;
 export type SelectPositionBody = z.infer<typeof selectPositionBody>;
 export type ChangePasswordBody = z.infer<typeof changePasswordBody>;
+export type CancelAccountBody = z.infer<typeof cancelAccountBody>;
 
 /* ------------------------------------------------------------------ handlers */
 
@@ -326,5 +333,31 @@ export const memberChangePassword = async (req: Request, res: Response) => {
     return sendSuccess(res, "Password updated successfully", { auth: tokenPayload(token) });
   } catch (error) {
     return handleError(res, error, "Member change password error:");
+  }
+};
+
+// Cancels the member's portal account: sign-in is switched off (users.active = 0) and this session's
+// token is revoked. Nothing is deleted - the membership record, donations and subscription history
+// stay with the organisation, and the office can restore access.
+export const memberCancelAccount = async (req: Request, res: Response) => {
+  try {
+    if (!req.auth) {
+      return sendError(res, 401, "Token not provided");
+    }
+
+    const { currentPassword } = (req.body ?? {}) as CancelAccountBody;
+
+    const user = await requireActiveUser(req.auth.userId);
+
+    if (!user.password || !(await verifyPassword(user.password, currentPassword))) {
+      throw AppError.unauthorized("Your current password is not correct.");
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { active: 0 }, select: { id: true } });
+    revokeToken(req.auth.jti, req.auth.exp);
+
+    return sendSuccess(res, "Your account has been cancelled");
+  } catch (error) {
+    return handleError(res, error, "Member cancel account error:");
   }
 };

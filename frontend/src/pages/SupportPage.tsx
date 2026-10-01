@@ -1,0 +1,50 @@
+import { Link } from "react-router-dom";
+
+import LegalPage, { LegalContact, LegalList, LegalSection, SUPPORT_EMAIL } from "../components/LegalPage";
+
+function SupportPage() {
+  return (
+    <LegalPage title="Support" updated="1 October 2026">
+      <LegalSection title="Need help?">
+        <p>
+          If you have a problem with ICF FIRST or a question about your membership, email us at{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-700 underline-offset-2 hover:underline">
+            {SUPPORT_EMAIL}
+          </a>
+          . To help us answer quickly, please include:
+        </p>
+        <LegalList
+          items={[
+            "Your membership number (never your password).",
+            "What you were trying to do, and what happened instead.",
+            "The device and app or browser you were using.",
+          ]}
+        />
+      </LegalSection>
+
+      <LegalSection title="Common questions">
+        <LegalList
+          items={[
+            ["I can't sign in", "Check your membership number (2 letters followed by 7 digits) and password. After too many wrong attempts, sign-in is paused for a few minutes."],
+            ["I want to change my password", "Sign in, then open Change password from your dashboard or profile."],
+            ["My details are wrong", "Contact us with the correct details and we will update your membership record."],
+            ["\"Your login is disabled\"", "Your account has been switched off or cancelled. Contact us to have it restored."],
+          ]}
+        />
+        <p>
+          To stop using ICF FIRST, see{" "}
+          <Link to="/deleteAccount" className="text-blue-700 underline-offset-2 hover:underline">
+            Account Deletion
+          </Link>
+          .
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Contact">
+        <LegalContact />
+      </LegalSection>
+    </LegalPage>
+  );
+}
+
+export default SupportPage;

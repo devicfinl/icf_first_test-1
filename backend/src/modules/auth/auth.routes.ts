@@ -1,9 +1,11 @@
 import { Router } from "express";
 import {
+  cancelAccountBody,
   changePasswordBody,
   loginBody,
   logout,
   me,
+  memberCancelAccount,
   memberChangePassword,
   memberLogin,
   memberPositions,
@@ -34,3 +36,13 @@ authRouter.post(
   memberChangePassword,
 );
 authRouter.post("/logout", requireAuth, logout);
+
+// Turns off sign-in for the account; no data is deleted. The tight limiter, because each request is
+// a guess at the current password.
+authRouter.post(
+  "/cancel-account",
+  authRateLimit,
+  requireAuth,
+  validate({ body: cancelAccountBody }),
+  memberCancelAccount,
+);

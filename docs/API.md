@@ -154,6 +154,17 @@ Revokes the caller's token. The denylist is in memory, so a revoked token become
 the process restarts before it would have expired — move it to Redis or a table before running
 more than one instance.
 
+## `POST /api/auth/cancel-account` *(auth)*
+
+```json
+{ "currentPassword": "…", "confirm": true }
+```
+
+Cancels the member's portal account: sets `users.active = 0` and revokes the caller's token, so
+later sign-ins get `401 Your login is disabled`. Nothing is deleted — the membership record,
+donations and subscription history stay. The office restores access by setting `active` back to 1.
+`401` for a wrong password; `400` if `confirm` is not `true`. Uses the tight auth rate limit.
+
 ---
 
 ## `GET /api/member/profile` *(auth)*

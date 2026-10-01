@@ -141,6 +141,25 @@ export const changePassword = createAsyncThunk<
   }
 });
 
+/* -------------------------------------------------- cancel account */
+
+/**
+ * Cancels the member's portal account. The server switches sign-in off and revokes this token;
+ * nothing is deleted, so the session is simply cleared here.
+ */
+export const cancelAccount = createAsyncThunk<true, { currentPassword: string; confirm: true }, ThunkConfig>(
+  "auth/cancelAccount",
+  async (body, thunkAPI) => {
+    try {
+      await api.post<ApiEnvelope<null>>("/auth/cancel-account", body);
+      clearSession();
+      return true as const;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(apiErrorMessage(error, "Could not cancel your account"));
+    }
+  },
+);
+
 /* -------------------------------------------------- sign out */
 
 export const logoutUser = createAsyncThunk<true, void, ThunkConfig>(

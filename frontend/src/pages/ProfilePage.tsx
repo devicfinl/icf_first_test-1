@@ -81,6 +81,9 @@ function ProfilePage() {
                   <KeyRound />
                   Change password
                 </Button>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/deleteAccount")}>
+                  Cancel account
+                </Button>
               </div>
             </div>
 
