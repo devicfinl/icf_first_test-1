@@ -4,7 +4,7 @@ import LegalPage, { LegalContact, LegalList, LegalSection } from "../components/
 
 function TermsPage() {
   return (
-    <LegalPage title="Terms and Conditions" updated="23 September 2026">
+    <LegalPage title="Terms and Conditions" updated="1 October 2026">
       <LegalSection title="1. Introduction">
         <p>
           Welcome to ICF FIRST! These Terms and Conditions govern your use of the ICF FIRST member portal and
@@ -49,11 +49,29 @@ function TermsPage() {
             "Engage in any activity that interferes with or disrupts the portal or the servers and networks connected to it.",
             "Try to access another member's account or data, or any part of the portal you are not authorised to use.",
             "Misuse information about other members that you can see through your role.",
+            "Act in a way that goes against ICF International's decisions, rules or policies.",
           ]}
         />
       </LegalSection>
 
-      <LegalSection title="6. Privacy">
+      <LegalSection title="6. Suspension and Cancellation">
+        <p>
+          If ICF International, or its higher committees and leaders, find that your activity does not follow
+          ICF's decisions, rules or policies, or these terms, your access to the portal may be restricted,
+          suspended or cancelled.
+        </p>
+        <p>
+          You may also cancel your own account at any time (see{" "}
+          <Link to="/deleteAccount" className="text-blue-700 underline-offset-2 hover:underline">
+            Account Deletion
+          </Link>
+          ). In every case your membership, donation and subscription records are kept by ICF International.
+          To ask for access to be restored, contact your higher committee leaders or us using the details
+          below.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="7. Privacy">
         <p>
           Our{" "}
           <Link to="/privacyPolicy" className="text-blue-700 underline-offset-2 hover:underline">
@@ -63,21 +81,21 @@ function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="7. Limitation of Liability">
+      <LegalSection title="8. Limitation of Liability">
         <p>
           ICF International shall not be liable for any indirect, incidental, special, or consequential
           damages resulting from the use or inability to use the portal.
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Changes to Terms">
+      <LegalSection title="9. Changes to Terms">
         <p>
           We may review and update these terms at any time. Your continued use of the portal following any
           such changes will constitute your acceptance of the updated terms.
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Contact Us">
+      <LegalSection title="10. Contact Us">
         <p>If you have any questions or concerns regarding these Terms and Conditions, please contact us at:</p>
         <LegalContact />
       </LegalSection>

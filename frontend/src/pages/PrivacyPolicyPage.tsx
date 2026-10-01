@@ -117,7 +117,9 @@ function PrivacyPolicyPage() {
         <LegalSubsection title="4.1 Within ICF International">
           <p>
             Authorised office-bearers and administrators of ICF International may see member information
-            where their role requires it, for example to manage membership or committee records.
+            where their role requires it, for example to manage membership or committee records. This
+            includes the leaders of your higher committees in the ICF organisation, who may review a member's
+            activity on the portal to make sure it follows ICF's decisions, rules and policies.
           </p>
         </LegalSubsection>
 
@@ -200,8 +202,9 @@ function PrivacyPolicyPage() {
         />
         <p>
           You can view your membership record at any time on your profile page. To exercise any of these
-          rights, or to correct details in your record, please contact us using the details in Section 11. We
-          will respond within 30 days of receiving your request.
+          rights, or to correct details in your record, please contact us using the details in Section 11, or
+          ask the leaders of your higher committee to pass your request on. We will respond within 30 days of
+          receiving your request.
         </p>
       </LegalSection>
 
