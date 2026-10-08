@@ -6,6 +6,7 @@ declare global {
     interface Request {
       // Set by requireAuth so protected handlers can read the caller's identity and the committee
       // position they selected for this session (null until they pick one).
+      user?: { userId: string; jti: string; exp: number; position: SessionPosition | null };
       auth?: { userId: string; jti: string; exp: number; position: SessionPosition | null };
       // Set by the validate middleware: the request's checked body, query and params.
       validated?: ValidatedRequest;

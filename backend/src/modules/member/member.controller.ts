@@ -1,7 +1,8 @@
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { prisma } from "../../db/index.js";
 import { AppError } from "../../utils/app-error.js";
+import { AppResponse } from "../../utils/app-response.js";
 import {
   organisationChain,
   resolveCityName,
@@ -9,7 +10,6 @@ import {
   resolveDesignationName,
   resolveDomainValues,
 } from "../../utils/reference-data.js";
-import { handleError, sendError, sendSuccess } from "../../utils/response.js";
 
 // Legacy columns store "" rather than NULL, so blank values are returned as null.
 function text(value: string | null | undefined): string | null {
@@ -37,24 +37,28 @@ function ageFrom(dateOfBirth: string): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
-// userId is users.id from the session token; a member can only ever read their own record.
-async function buildProfile(userId: number) {
+export const memberProfile = async (req: Request, res: Response, next?: NextFunction) => {
+
+  // requireAuth has verified the session token; sub is users.id.
+  const userId = req.user?.userId
+
+
   // Just what the profile needs, so the password hash isn't loaded for it.
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { userName: true, active: true } });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { userName: true, active: true } });
 
   if (!user) {
-    throw AppError.notFound("Member not found");
+    throw new AppError("Member not found", 404);
   }
 
   if (user.active !== 1) {
-    throw AppError.unauthorized("Your login is disabled");
+    throw new AppError("Your login is disabled", 401);
   }
 
   // users.user_name is the membership number
   const member = await prisma.membershipMaster.findFirst({ where: { membershipNo: user.userName } });
 
   if (!member) {
-    throw AppError.notFound("Membership record not found");
+    throw new AppError("Membership record not found", 404);
   }
 
   // Optional profile extras: only a few members have a row.
@@ -76,7 +80,7 @@ async function buildProfile(userId: number) {
   const lookup = (id: number | null) => (id ? domainValues.get(id) ?? null : null);
   const unit = hierarchy.at(-1)?.id === member.unitId ? hierarchy.at(-1)! : null;
 
-  return {
+  const profile = {
     membership_no: member.membershipNo,
     name: text(member.memberName),
     father_name: text(member.fatherName),
@@ -119,20 +123,8 @@ async function buildProfile(userId: number) {
       india_zone: text(member.zoneIndia),
     },
   };
-}
 
-export const memberProfile = async (req: Request, res: Response) => {
-  try {
-    // requireAuth has verified the session token; sub is users.id.
-    const userId = Number(req.auth?.userId);
-    if (!Number.isInteger(userId)) {
-      return sendError(res, 401, "Invalid token");
-    }
-
-    const profile = await buildProfile(userId);
-
-    return sendSuccess(res, "Profile fetched successfully", { profile });
-  } catch (error) {
-    return handleError(res, error, "Member profile error:");
-  }
+  const response = new AppResponse("Profile fetched successfully", { profile });
+  if (next) return next(response);
+  return res.status(response.statusCode).json(response.toJSON());
 };

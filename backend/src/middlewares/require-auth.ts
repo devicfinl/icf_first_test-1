@@ -34,11 +34,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return unauthorized(res, "Invalid token");
   }
 
-  req.auth = {
+  const authUser = {
     userId: String(payload.sub),
     jti: payload.jti,
     exp: payload.exp,
     position: parseSessionPosition(payload.position),
   };
+  req.user = authUser;
+  req.auth = authUser; //TODO: remove this after refactor
   next();
 }

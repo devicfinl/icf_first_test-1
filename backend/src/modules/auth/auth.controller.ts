@@ -1,7 +1,8 @@
-import type { Request, Response } from "express";
-import { z } from "zod";
+import type { NextFunction, Request, Response } from "express";
+import { body } from "express-validator";
 import { prisma } from "../../db/index.js";
 import { AppError } from "../../utils/app-error.js";
+import { AppResponse } from "../../utils/app-response.js";
 import { createAttemptLimiter } from "../../utils/attempt-limiter.js";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
@@ -10,80 +11,21 @@ import {
 } from "../../utils/jwt.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { resolveOrganisationSummaries } from "../../utils/reference-data.js";
-import { handleError, sendError, sendSuccess } from "../../utils/response.js";
 import { revokeToken } from "../../utils/token-denylist.js";
-
-/* ------------------------------------------------------------------ request schemas */
-
-// z.strictObject rejects unknown fields. Messages are shown to the member on a 400.
-const text = (message: string) => z.string({ error: message });
+import { validate } from "../../utils/validate.js";
 
 // 2 letters + 7 digits. Checked before any lookup, so a bad format never reveals whether an account exists.
 const USERNAME_PATTERN = /^[A-Z]{2}\d{7}$/;
 
-export const loginBody = z.strictObject({
-  userName: text("Username is wrong")
-    .trim()
-    .min(1, "Username is wrong")
-    .regex(USERNAME_PATTERN, "Username is wrong"),
-  password: text("Please enter your password.").min(1, "Please enter your password."),
-});
-
-export const selectPositionBody = z.strictObject({
-  positionId: z.coerce
-    .number({ error: "Please choose one of your committee positions." })
-    .int("Please choose one of your committee positions.")
-    .positive("Please choose one of your committee positions."),
-});
-
-const newPassword = text("Please enter a new password.")
-  .min(8, "Password must be at least 8 characters.")
-  .max(200, "Password is too long.");
-
-// The current password is required so a stolen token can't take the account over.
-export const changePasswordBody = z
-  .strictObject({
-    currentPassword: text("Please enter your current password.").min(1, "Please enter your current password."),
-    newPassword,
-    confirmPassword: text("Please confirm your new password.").min(1, "Please confirm your new password."),
-  })
-  .refine((body) => body.newPassword === body.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  })
-  .refine((body) => body.newPassword !== body.currentPassword, {
-    message: "Your new password must be different from your current one.",
-    path: ["newPassword"],
-  });
-
-export type LoginBody = z.infer<typeof loginBody>;
-export type SelectPositionBody = z.infer<typeof selectPositionBody>;
-export type ChangePasswordBody = z.infer<typeof changePasswordBody>;
-
 /* ------------------------------------------------------------------ handlers */
 
-// req.body is already validated against the schemas above (see auth.routes.ts).
 
-// Separate messages are a product choice; they reveal which usernames exist, which the lockout limits.
-const USERNAME_ERROR = "Username is wrong";
-const PASSWORD_ERROR = "Password is wrong";
 
 // Per-account lockout, on top of per-IP rate limiting, so rotating IPs doesn't help an attacker.
 const loginLimiter = createAttemptLimiter({ maxAttempts: 10, windowMs: 15 * 60 * 1000 });
 
-// For tests only.
-export const __testing = { loginLimiter };
 
 // Never select the whole users row.
-const SESSION_USER_COLUMNS = {
-  id: true,
-  userName: true,
-  memberNo: true,
-  name: true,
-  password: true,
-  active: true,
-} as const;
-
 export interface MemberPosition {
   id: number;
   designation: { id: number; name: string; level: number };
@@ -146,185 +88,185 @@ async function cabinetPositions(memberNo: string): Promise<MemberPosition[]> {
 async function requireActiveUser(userId: string) {
   const id = Number(userId);
   const user = Number.isInteger(id)
-    ? await prisma.user.findUnique({ where: { id }, select: SESSION_USER_COLUMNS })
+    ? await prisma.user.findUnique({
+      where: { id }, select: {
+        id: true,
+        userName: true,
+        memberNo: true,
+        name: true,
+        password: true,
+        active: true,
+      }
+    })
     : null;
 
   if (!user) {
-    throw AppError.unauthorized("Member not found");
+    throw new AppError("Member not found", 404);
   }
 
   if (user.active !== 1) {
-    throw AppError.unauthorized("Your login is disabled");
+    throw new AppError("Your login is disabled", 401);
   }
 
   return user;
 }
 
-export const memberLogin = async (req: Request, res: Response) => {
-  try {
-    const { userName, password } = (req.body ?? {}) as LoginBody;
+export const memberLogin = async (req: Request, res: Response, next: NextFunction) => {
+  await body("userName").trim().notEmpty().withMessage("Username is wrong").matches(USERNAME_PATTERN).withMessage("Username is wrong").run(req);
+  await body("password").notEmpty().withMessage("Please enter your password.").run(req);
 
-    const identifier = userName.trim();
-    // Lowercased so changing capitalisation doesn't reset the lockout.
-    const limiterKey = identifier.toLowerCase();
+  if (!validate(req, res)) return;
 
-    if (loginLimiter.isLockedOut(limiterKey)) {
-      throw AppError.tooManyRequests("Too many sign-in attempts. Please try again in a few minutes.");
-    }
+  const { userName, password } = req.body;
 
-    const user = await prisma.user.findFirst({ where: { userName: identifier }, select: SESSION_USER_COLUMNS });
+  // Lowercased so changing capitalisation doesn't reset the lockout.
+  const limiterKey = userName.toLowerCase();
 
-    if (!user) {
-      loginLimiter.recordFailure(limiterKey);
-      throw AppError.unauthorized(USERNAME_ERROR);
-    }
+  if (loginLimiter.isLockedOut(limiterKey)) {
+    throw new AppError("Too many sign-in attempts. Please try again in a few minutes.", 429);
+  }
 
-    if (!user.password || !(await verifyPassword(user.password, password))) {
-      loginLimiter.recordFailure(limiterKey);
-      throw AppError.unauthorized(PASSWORD_ERROR);
-    }
+  const user = await prisma.user.findFirst({
+    where: { userName: userName },
+    select: {
+      id: true,
+      userName: true,
+      memberNo: true,
+      name: true,
+      password: true,
+      active: true,
+    },
+  });
 
-    // Checked after the password so a disabled account isn't revealed by a wrong password.
-    if (user.active !== 1) {
-      throw AppError.unauthorized("Your login is disabled");
-    }
+  if (!user) {
+    loginLimiter.recordFailure(limiterKey);
+    throw new AppError("Invalid Credentials", 401);
+  }
 
-    loginLimiter.clear(limiterKey);
+  if (!user.password || !(await verifyPassword(user.password, password))) {
+    loginLimiter.recordFailure(limiterKey);
+    throw new AppError("Invalid Credentials", 401);
+  }
 
-    const positions = await cabinetPositions(user.memberNo);
+  // Checked after the password so a disabled account isn't revealed by a wrong password.
+  if (user.active !== 1) {
+    throw new AppError("Your login is disabled", 401);
+  }
 
-    // One position is applied now; several must be chosen via select-position.
-    const position = positions.length === 1 ? positions[0]! : null;
-    const requiresPositionSelection = positions.length > 1;
+  loginLimiter.clear(limiterKey);
 
-    const message = requiresPositionSelection
-      ? "Login successful. Please select the committee position to continue with."
-      : "Login successful";
+  const positions = await cabinetPositions(user.memberNo);
 
-    return sendSuccess(res, message, {
+  // One position is applied now; several must be chosen via select-position.
+  const position = positions.length === 1 ? positions[0]! : null;
+  const requiresPositionSelection = positions.length > 1;
+
+  const message = requiresPositionSelection
+    ? "Login successful. Please select the committee position to continue with."
+    : "Login successful";
+
+  return next(
+    new AppResponse(message, {
       auth: tokenPayload(signAccessToken(user.id, user.userName, position && toSessionPosition(position))),
       name: user.name,
       position,
       positions,
       requires_position_selection: requiresPositionSelection,
-    });
-  } catch (error) {
-    return handleError(res, error, "Member login error:");
-  }
+    }),
+  );
 };
 
-export const memberPositions = async (req: Request, res: Response) => {
-  try {
-    if (!req.auth) {
-      return sendError(res, 401, "Token not provided");
-    }
+export const memberPositions = async (req: Request, res: Response, next: NextFunction) => {
+  const user = await requireActiveUser(req.user!.userId);
+  const positions = await cabinetPositions(user.memberNo);
 
-    const user = await requireActiveUser(req.auth.userId);
-    const positions = await cabinetPositions(user.memberNo);
-
-    return sendSuccess(res, "Positions fetched successfully", { positions });
-  } catch (error) {
-    return handleError(res, error, "Member positions error:");
-  }
+  return next(new AppResponse("Positions fetched successfully", { positions }));
 };
 
 // Restores the session on page load.
-export const me = async (req: Request, res: Response) => {
-  try {
-    if (!req.auth) {
-      return sendError(res, 401, "Token not provided");
-    }
+export const me = async (req: Request, res: Response, next: NextFunction) => {
+  const authUser = req.user!;
+  const user = await requireActiveUser(authUser.userId);
+  const positions = await cabinetPositions(user.memberNo);
 
-    const auth = req.auth;
-    const user = await requireActiveUser(auth.userId);
-    const positions = await cabinetPositions(user.memberNo);
+  // Checked against the live list, not trusted from the token.
+  const position = (authUser.position && positions.find((candidate) => candidate.id === authUser.position!.cmid)) ?? null;
 
-    // Checked against the live list, not trusted from the token.
-    const position = (auth.position && positions.find((candidate) => candidate.id === auth.position!.cmid)) ?? null;
-
-    return sendSuccess(res, "Session is valid", {
+  return next(
+    new AppResponse("Session is valid", {
       membership_no: user.userName,
       name: user.name,
       position,
       positions,
       requires_position_selection: !position && positions.length > 1,
-      expires_at: auth.exp,
-    });
-  } catch (error) {
-    return handleError(res, error, "Current session error:");
-  }
+      expires_at: authUser.exp,
+    }),
+  );
 };
 
 // Issues a token carrying the chosen position and revokes the old one.
-export const selectPosition = async (req: Request, res: Response) => {
-  try {
-    if (!req.auth) {
-      return sendError(res, 401, "Token not provided");
-    }
+export const selectPosition = async (req: Request, res: Response, next: NextFunction) => {
+  await body("positionId").isInt({ min: 1 }).withMessage("Please choose one of your committee positions.").run(req);
+  if (!validate(req, res)) return;
 
-    const { positionId } = (req.body ?? {}) as SelectPositionBody;
+  const { positionId } = req.body
 
-    const user = await requireActiveUser(req.auth.userId);
-    const position = (await cabinetPositions(user.memberNo)).find((candidate) => candidate.id === positionId);
+  const user = await requireActiveUser(req.user!.userId);
+  const position = (await cabinetPositions(user.memberNo)).find((candidate) => candidate.id === positionId);
 
-    // Same answer for another member's position, so it can't be used to probe.
-    if (!position) {
-      throw AppError.forbidden("That committee position is not available to you.");
-    }
+  // Same answer for another member's position, so it can't be used to probe.
+  if (!position) {
+    throw new AppError("That committee position is not available to you.", 403);
+  }
 
-    const token = signAccessToken(user.id, user.userName, toSessionPosition(position));
-    revokeToken(req.auth.jti, req.auth.exp);
+  const token = signAccessToken(user.id, user.userName, toSessionPosition(position));
+  revokeToken(req.user!.jti, req.user!.exp);
 
-    return sendSuccess(res, "Committee position selected successfully", {
+  return next(
+    new AppResponse("Committee position selected successfully", {
       auth: tokenPayload(token),
       position,
-    });
-  } catch (error) {
-    return handleError(res, error, "Select position error:");
-  }
+    }),
+  );
 };
 
-export const logout = async (req: Request, res: Response) => {
-  try {
-    if (!req.auth) {
-      return sendError(res, 401, "Token not provided");
-    }
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+  revokeToken(req.user!.jti, req.user!.exp);
 
-    revokeToken(req.auth.jti, req.auth.exp);
-
-    return sendSuccess(res, "Successfully logged out");
-  } catch (error) {
-    return handleError(res, error, "Logout error:", "Failed to logout");
-  }
+  return next(new AppResponse("Successfully logged out"));
 };
 
 // Returns a replacement token and revokes the old one.
-export const memberChangePassword = async (req: Request, res: Response) => {
-  try {
-    if (!req.auth) {
-      return sendError(res, 401, "Token not provided");
-    }
+export const memberChangePassword = async (req: Request, res: Response, next: NextFunction) => {
+  await body("currentPassword").notEmpty().withMessage("Please enter your current password.").run(req);
+  await body("newPassword")
+    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters.")
+    .isLength({ max: 200 }).withMessage("Password is too long.")
+    .custom((value, { req }) => value !== req.body?.currentPassword).withMessage("Your new password must be different from your current one.")
+    .run(req);
+  await body("confirmPassword")
+    .custom((value, { req }) => value === req.body?.newPassword).withMessage("Passwords do not match")
+    .run(req);
 
-    const { currentPassword, newPassword } = (req.body ?? {}) as ChangePasswordBody;
+  if (!validate(req, res)) return;
 
-    const user = await requireActiveUser(req.auth.userId);
+  const { currentPassword, newPassword } = req.body;
 
-    if (!user.password || !(await verifyPassword(user.password, currentPassword))) {
-      throw AppError.unauthorized("Your current password is not correct.");
-    }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { password: await hashPassword(newPassword) },
-      select: { id: true },
-    });
-
-    // Keeps the session's committee position.
-    const token = signAccessToken(user.id, user.userName, req.auth.position);
-    revokeToken(req.auth.jti, req.auth.exp);
-
-    return sendSuccess(res, "Password updated successfully", { auth: tokenPayload(token) });
-  } catch (error) {
-    return handleError(res, error, "Member change password error:");
+  const user = await requireActiveUser(req.user!.userId);
+  const verified = user.password && await verifyPassword(user.password, currentPassword);
+  if (!verified) {
+    throw new AppError("Your current password is not correct.", 401);
   }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { password: await hashPassword(newPassword) },
+    select: { id: true },
+  });
+
+  // Keeps the session's committee position.
+  const token = signAccessToken(user.id, user.userName, req.user!.position);
+  revokeToken(req.user!.jti, req.user!.exp);
+
+  return next(new AppResponse("Password updated successfully", { auth: tokenPayload(token) }));
 };

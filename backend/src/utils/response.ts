@@ -1,5 +1,8 @@
 import type { Response } from "express";
 import { AppError } from "./app-error.js";
+import { AppResponse } from "./app-response.js";
+
+export { AppResponse };
 
 // Every endpoint answers with the same envelope, so the client has one shape to handle:
 //   { success, message, data, errors? }
@@ -10,7 +13,8 @@ export interface ErrorDetail {
 }
 
 export function sendSuccess<T>(res: Response, message: string, data: T | null = null, status = 200) {
-  return res.status(status).json({ success: true, message, data });
+  const response = new AppResponse(message, data, status);
+  return res.status(response.statusCode).json(response.toJSON());
 }
 
 export function sendError(res: Response, status: number, message: string, errors?: readonly ErrorDetail[]) {
