@@ -8,7 +8,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(1, "JWT_SECRET is not set"),
   // How long a session token stays valid. Short by design: logout revokes a token, but the
   // denylist only has to remember it until it would expire anyway.
-  ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30000),
   // membership_master.image_url holds only a file name; photos are served from this address.
   MEMBER_PHOTO_BASE_URL: z.string().default(""),
   // Browser origins allowed to call the API, comma separated. Empty means same-origin only,

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Text } from "@radix-ui/themes";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -92,7 +92,7 @@ function LoginPage() {
           </Text>
         )}
 
-        <SubmitButton label={loading ? "Signing in..." : "Sign in"} disabled={loading} />
+        <SubmitButton label={loading ? "Signing in..." : "Sign in"} disabled={loading} loading={loading} />
       </Form.Root>
     </AuthShell>
   );

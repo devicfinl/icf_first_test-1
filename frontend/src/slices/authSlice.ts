@@ -22,6 +22,8 @@ type AuthState = {
    */
   sessionChecked: boolean;
   membershipNo: string | null;
+  /** The member's display name from the auth endpoints, so it shows before the profile loads. */
+  name: string | null;
   /** The committee context this session acts as, once one applies. */
   position: MemberPosition | null;
   positions: MemberPosition[];
@@ -50,6 +52,7 @@ const initialState: AuthState = {
   // With nothing stored there is nothing to verify.
   sessionChecked: !stored,
   membershipNo: stored?.membershipNo ?? null,
+  name: stored?.name ?? null,
   position: stored?.position ?? null,
   positions: stored?.positions ?? [],
   requiresPositionSelection: stored?.requiresPositionSelection ?? false,
@@ -64,6 +67,7 @@ function signedOut(state: AuthState): void {
   state.token = null;
   state.sessionChecked = true;
   state.membershipNo = null;
+  state.name = null;
   state.position = null;
   state.positions = [];
   state.requiresPositionSelection = false;
@@ -91,6 +95,7 @@ const authSlice = createSlice({
       state.token = action.payload.token;
       state.sessionChecked = true;
       state.membershipNo = action.payload.membershipNo;
+      state.name = action.payload.name ?? null;
       state.position = action.payload.position;
       state.positions = action.payload.positions;
       state.requiresPositionSelection = action.payload.requiresPositionSelection;
@@ -110,6 +115,7 @@ const authSlice = createSlice({
         state.token = action.payload.auth.token;
         state.sessionChecked = true;
         state.membershipNo = action.payload.membershipNo;
+        state.name = action.payload.name;
         state.position = action.payload.position;
         state.positions = action.payload.positions;
         state.requiresPositionSelection = action.payload.requires_position_selection;
@@ -118,6 +124,7 @@ const authSlice = createSlice({
       .addCase(restoreSession.fulfilled, (state, action) => {
         state.sessionChecked = true;
         state.membershipNo = action.payload.membership_no;
+        state.name = action.payload.name;
         state.position = action.payload.position;
         state.positions = action.payload.positions;
         state.requiresPositionSelection = action.payload.requires_position_selection;

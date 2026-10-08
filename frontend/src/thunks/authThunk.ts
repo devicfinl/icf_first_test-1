@@ -30,6 +30,7 @@ export const loginUser = createAsyncThunk<
     setSession({
       token: result.auth.token,
       membershipNo: credentials.userName,
+      name: result.name,
       position: result.position,
       positions: result.positions,
       requiresPositionSelection: result.requires_position_selection,
@@ -60,6 +61,7 @@ export const restoreSession = createAsyncThunk<CurrentSessionData, void, ThunkCo
         setSession({
           token,
           membershipNo: result.membership_no,
+          name: result.name,
           position: result.position,
           positions: result.positions,
           requiresPositionSelection: result.requires_position_selection,

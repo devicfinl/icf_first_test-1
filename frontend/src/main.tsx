@@ -6,7 +6,7 @@ import { Theme } from "@radix-ui/themes";
 import { Provider } from "react-redux";
 import store from "./store/store.ts";
 import { BrowserRouter } from "react-router-dom";
-import { Toaster } from "react-hot-toast";
+import { Toaster } from "@/components/ui/sonner";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -22,7 +22,8 @@ createRoot(document.getElementById("root")!).render(
         radius="large"
       >
         <Provider store={store}>
-          <Toaster position="top-center" />
+          {/* shadcn toasts (Sonner). The app has no dark mode, so the theme is fixed to light. */}
+          <Toaster position="top-center" theme="light" richColors closeButton />
           <App />
         </Provider>
       </Theme>

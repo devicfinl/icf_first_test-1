@@ -221,6 +221,232 @@ when their token expires.
 
 ---
 
+## Pravasi Vayana registration *(auth, leader)*
+
+Every `/api/pv` endpoint needs a session acting as a **leader**: a cabinet committee position at
+**Region**, **Division** or **Unit** level, re-checked on each request. Anyone else gets 403. A leader
+only sees and saves places in their own branch of the hierarchy (their own place and below); anything
+else is 403.
+
+### `GET /api/pv/registration/context`
+
+```json
+{
+  "leader": { "id": 70, "name": "Bousher", "level": "Division" },
+  "path": [ { "id": 2, "name": "Oman", "level": "National" },
+            { "id": 60, "name": "Muscat", "level": "Region" },
+            { "id": 70, "name": "Bousher", "level": "Division" } ],
+  "choose_unit": true
+}
+```
+
+`choose_unit` is false for a Unit leader, whose own unit is used.
+
+### `GET /api/pv/registration/children?parent_id=`
+
+The places directly below `parent_id` (Chapter, Region, Division or Unit), for the next dropdown.
+Call it again with the chosen place until a `Unit` is chosen; the number of levels depends on the
+country (Saudi has a Chapter level, some countries have no Division).
+
+```json
+{ "places": [ { "id": 80, "name": "Bousher Unit A", "level": "Unit" } ] }
+```
+
+### `GET /api/pv/registration/price?unit_id=`
+
+The open (not Closed) campaign in `vayana_subscription` for the unit's country. A price that is not
+set is `null`.
+
+```json
+{ "country_code": "OM", "year": 2027, "currency": "OMR", "campaign_status": "Open",
+  "prices": { "Print": 5, "Digital": 3.5, "Print&Digital": 6 } }
+```
+
+400 when the unit has no country, no price is set, the campaign is closed, or more than one
+campaign is open for the country.
+
+### `POST /api/pv/registrations`
+
+Adds a new subscriber and their subscription for the open campaign year.
+
+```json
+{
+  "unitId": 80, "name": "Mariam Al-Riyami",
+  "shopName": "…", "floorNo": "7", "buildingName": "Sun Tower", "street": "…", "area": "…",
+  "province": "Muscat",
+  "mobileCountry": "968", "mobile": "91678230", "whatsappCountry": "968", "whatsapp": "91678230",
+  "email": "…", "contactPersonName": "…",
+  "subscriptionMode": "Print", "distributorArea": "…", "deliveryResponsibility": "…",
+  "cashReceived": "N"
+}
+```
+
+Required: `unitId` (a Unit), `name`, `buildingName`, `province`, `mobileCountry`, `mobile`,
+`subscriptionMode` (`Print`, `Digital`, `Print&Digital`). `deliveryResponsibility` only with a mode
+that includes Print; `whatsapp` needs `whatsappCountry`. Year, currency, amount, approval and
+`added_by` are set by the server; sending them is a 400.
+
+201:
+
+```json
+{ "subscriber_id": 1001, "registration_type": "NEW", "subscription_year": 2027, "currency": "OMR", "amount": 5 }
+```
+
+400 when a subscriber with the same mobile and name already exists: they must be renewed through
+the existing-subscriber search instead.
+
+**Renewing** an existing subscriber: send their `subscriber_id` as `subscriberId` (from the lookup
+below) with the same fields. The subscriber's name and contact details are updated from the body,
+and a `RENEW` subscription is added (`previous_year_user` = Yes, `address_change` = Yes when the
+address differs from their previous subscription, `ledger_no` copied from the subscriber). Refused
+when their latest subscription is outside the leader's branch (403), when they already have one for
+the open year (400), or when the subscriber does not exist (400). The 201 answer has
+`"registration_type": "RENEW"`.
+
+### `GET /api/pv/subscribers/lookup?q=`
+
+The "Is Existing Subscriber" search. `q` is a subscriber number (`subscriber_id`), a ledger number
+(the placeholder `PV100000` is ignored) or a mobile number (digits; with or without the country code
+and leading zeros). Only subscribers whose latest subscription is in the leader's branch are
+returned, at most 20. `year` is the open campaign year (null while none is open). `previous.path`
+is the organisation dropdown choices below the leader's place down to the unit (empty for a Unit
+leader), so the form can set Division and Unit too.
+
+```json
+{
+  "year": 2027,
+  "subscribers": [{
+    "subscriber_id": 6, "name": "Laila Hameed", "ledger_no": "PV2006",
+    "mobile_country": "968", "mobile": "95550006", "whatsapp_country": "968", "whatsapp": "95550006",
+    "email": "laila@example.com", "already_registered_this_year": false,
+    "previous": {
+      "year": 2026, "unit": { "id": 80, "name": "Bousher Unit A", "level": "Unit" },
+      "path": [{ "id": 80, "name": "Bousher Unit A", "level": "Unit" }],
+      "subscription_mode": "Print", "shop_name": "Flat 12", "floor_no": "3", "building_name": "Old Tower",
+      "street": "Way 2041", "area": "Ruwi", "province": "Muscat", "distributor_area": "Ruwi lead",
+      "delivery_responsibility": "Rashid", "contact_person_name": "Hameed"
+    }
+  }]
+}
+```
+
+### `GET /api/pv/registrations?year=&page=&page_size=`
+
+Approved new registrations (not renewals) for one year in the leader's branch (their own place and
+every place below it), newest first. Public registrations appear once approved. `year` is optional:
+without it, the latest year that has subscriptions in the branch. `page` defaults to 1, `page_size`
+to 10 (max 100). `years` lists every year with subscriptions, latest first.
+
+```json
+{
+  "year": 2027, "years": [2027, 2026], "page": 1, "page_size": 10, "total": 23,
+  "items": [{
+    "subscriber_id": 1001, "name": "Mariam Al-Riyami", "mobile_country": "968", "mobile": "91678230",
+    "unit": { "id": 80, "name": "Bousher Unit A", "level": "Unit" },
+    "subscription_mode": "Digital", "currency": "OMR", "amount": 3.5, "cash_received": "Y",
+    "approval_status": "APPROVED", "registration_method": "DIRECT", "created_at": "2027-01-03T10:00:00.000Z"
+  }]
+}
+```
+
+### `GET /api/pv/analytics?year=&org_id=`
+
+Work progress for one year. Without `org_id`, the leader's own place; with it, a place below it
+(drill-down; 403 above or beside). Only approved subscriptions count. Target is the membership count
+(active `membership_master` rows in the place's units); `progress` = subscriptions ÷ target, `null`
+without a target. `renewable` = last year's approved subscribers; `paid` = cash received.
+`places` has one entry per place directly below (empty for a unit). `scope.top_id` is the leader's
+place: the report cannot go above it.
+
+```json
+{
+  "year": 2027, "years": [2027, 2026],
+  "scope": { "place": { "id": 70, "name": "Bousher", "level": "Division" }, "path": [ … ], "top_id": 70 },
+  "totals": { "subscriptions": 811, "new": 495, "renewals": 316, "renewable": 420, "paid": 700,
+              "membership": 1248, "total_units": 12, "target": 1248, "progress": 0.6498 },
+  "by_mode": { "Print": 300, "Digital": 311, "Print&Digital": 200 },
+  "amounts": [{ "currency": "OMR", "total": 3600.5, "received": 3100 }],
+  "places": [{ "id": 805, "name": "Ghubra East", "level": "Unit", "subscriptions": 311, "target": 548, "progress": 0.5675, … }]
+}
+```
+
+### `GET /api/pv/renewals?status=&search=&page=&page_size=`
+
+Last year's approved subscribers in the leader's branch, to renew in the open campaign year (or the
+latest year with subscriptions when none is open). `status`: `all` (default), `renew` (not yet
+renewed) or `renewed`. `search` matches name, mobile or ledger no. Items have the same shape as the
+lookup below; `already_registered_this_year` means renewed.
+
+### `GET /api/pv/public-registrations?status=&page=&page_size=`
+
+Registrations made through public links in the leader's branch, newest first. `status`: `PENDING`
+(default), `APPROVED` or `REJECTED`.
+
+### `POST /api/pv/public-registrations/{subscriber_id}/approve`
+
+Pending → Approved: the leader is recorded as approver and adder, the subscriber becomes ACTIVE and
+the subscription starts counting. 403 outside the leader's branch; 400 when already decided.
+
+### `POST /api/pv/public-registrations/{subscriber_id}/reject`
+
+Body `{ "reason": "…" }` (required). Pending → Rejected with the reason; the subscriber becomes REJECTED.
+
+### `GET /api/pv/subscribers/{subscriber_id}?year=`
+
+One subscriber's view: contact details, one year's subscription in full (default: the latest, or
+`year`), and every year as `history` (rejected included). 403 when that year's unit is outside the
+leader's branch; 404 for an unknown subscriber or a year they have no subscription for.
+
+```json
+{
+  "subscriber": { "subscriber_id": 500, "name": "Mariam Al-Riyami", "ledger_no": "PV500",
+                  "mobile_country": "968", "mobile": "91000000", "whatsapp_country": "968", "whatsapp": "91000000",
+                  "email": "mariam@example.com" },
+  "subscription": {
+    "year": 2027, "unit": { "id": 805, "name": "Ghubra East", "level": "Unit" },
+    "path": [ /* country down to the unit */ ], "form_path": [ /* dropdown choices below the leader */ ],
+    "subscription_mode": "Print", "shop_name": "Flat 7", "floor_no": "2", "building_name": "Sun Tower",
+    "street": "Way 1", "area": "Ruwi", "province": "Muscat", "distributor_area": "Ruwi lead",
+    "delivery_responsibility": "Rashid", "contact_person_name": null,
+    "currency": "OMR", "amount": 5, "cash_received": "Y",
+    "registration_type": "NEW", "registration_method": "DIRECT", "approval_status": "APPROVED",
+    "reject_reason": null, "address_change": "No",
+    "added_by": "Abdul Majeed", "approved_by": "Abdul Majeed", "approved_at": "…", "created_at": "…", "updated_at": null
+  },
+  "history": [ { "year": 2027, "unit": { … }, "subscription_mode": "Print", "currency": "OMR", "amount": 5,
+                 "registration_type": "NEW", "approval_status": "APPROVED" } ],
+  "allowed_actions": { "edit": true },
+  "edit_blocked_reason": null
+}
+```
+
+`edit` is false (with `edit_blocked_reason`) for an earlier year than the open campaign, or a
+rejected registration.
+
+### `PUT /api/pv/subscribers/{subscriber_id}/subscriptions/{year}`
+
+Edits that year's subscription. Body: the `POST /api/pv/registrations` body without `subscriberId`.
+Updates the subscriber's name and contact details, and the subscription's unit, address, mode,
+distribution and cash received; currency and amount are worked out again from the unit and mode.
+Type, method, approval status and year cannot change (sending them is a 400). Refused for an earlier
+year or a rejected registration (400), a unit or subscriber outside the branch (403), or a name and
+mobile that belong to another subscriber (400). 200:
+`{ "subscriber_id": 500, "subscription_year": 2027, "currency": "OMR", "amount": 6 }`
+
+## Pravasi Vayana public link *(no auth)*
+
+A leader shares `/pv/register/{root_id}`, where `root_id` is their own place (Region, Division or
+Unit; anything else is 404). The visitor's form has the path down to that place fixed and chooses
+the places below it. Every place and unit asked about must be inside `root_id` (403 otherwise).
+
+- `GET /api/public/pv/links/{root_id}`: same shape as `/api/pv/registration/context`.
+- `GET /api/public/pv/links/{root_id}/children?parent_id=`: same as `/api/pv/registration/children`.
+- `GET /api/public/pv/links/{root_id}/price?unit_id=`: same as `/api/pv/registration/price`.
+- `POST /api/public/pv/registrations`: the leader's body with `rootId` and without `cashReceived` and
+  `subscriberId`. Always saved as NEW, PUBLIC, PENDING (subscriber PENDING), no adder, cash No. A second
+  pending registration with the same mobile for the same year is a 400. Rate limited per IP. 201:
+  `{ "subscriber_id": 900, "subscription_year": 2027, "currency": "OMR", "amount": 3.5, "approval_status": "PENDING" }`
+
 ## `GET /health`
 
 Deliberately **not** the standard envelope: this is read by load balancers and uptime checks,

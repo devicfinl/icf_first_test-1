@@ -57,11 +57,18 @@ icf-first/
 │   │   ├── main.tsx                      # Entry point and providers
 │   │   ├── App.tsx                       # Routes
 │   │   ├── api/axios.ts                  # API client: token header, 401 handling, envelope
-│   │   ├── lib/session.ts                # Session persistence (localStorage)
+│   │   ├── api/pv.ts                     # Pravasi Vayana calls (page data, not in Redux)
+│   │   ├── lib/                          # Session persistence (localStorage), small pure helpers
 │   │   ├── components/                   # Shared UI and the route guard
-│   │   ├── pages/                        # Screens
-│   │   ├── slices/ store/ thunks/        # Redux Toolkit state
-│   │   ├── types/auth.ts                 # Shapes mirroring the API
+│   │   │   ├── layout/                   # AppShell, header, breadcrumb
+│   │   │   │   └── sidebar/              # Sidebar, SidebarLink, shared SidebarSubmenu, one component per submenu
+│   │   │   ├── account/                  # Change password drawer
+│   │   │   ├── form/                     # FormSection, TextField
+│   │   │   └── pv/                       # Add Subscriber steps and fields
+│   │   ├── hooks/                        # Page logic: organisation dropdowns, price, unsaved-changes warning
+│   │   ├── pages/                        # Screens: page-level state and layout only
+│   │   ├── slices/ store/ thunks/        # Redux Toolkit state (auth only)
+│   │   ├── types/                        # Shapes mirroring the API
 │   │   └── utilities/                    # Form schemas and helpers
 │   └── package.json
 └── docs/
