@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { body, param, query } from "express-validator";
 import { z } from "zod";
 import { prisma } from "../../db/index.js";
 import { AppError } from "../../utils/app-error.js";
@@ -8,6 +9,8 @@ import {
   type OrganisationLevel,
 } from "../../utils/reference-data.js";
 import { handleError, sendSuccess } from "../../utils/response.js";
+import { validate } from "../../utils/validate.js";
+
 
 /* ------------------------------------------------------------------ request schemas */
 
@@ -197,6 +200,151 @@ export type RenewalsQuery = z.infer<typeof renewalsQuery>;
 export type PublicRegistrationsQuery = z.infer<typeof publicRegistrationsQuery>;
 export type PublicRegistrationBody = z.infer<typeof publicRegistrationBody>;
 export type SubscriptionUpdateBody = z.infer<typeof subscriptionUpdateBody>;
+
+function normalizeSubscriberBody(b: any) {
+  if (!b) return b;
+  const blankToUndef = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+
+  return {
+    ...b,
+    name: typeof b.name === "string" ? b.name.trim() : b.name,
+    shopName: blankToUndef(typeof b.shopName === "string" ? b.shopName.trim() : b.shopName),
+    floorNo: blankToUndef(typeof b.floorNo === "string" ? b.floorNo.trim() : b.floorNo),
+    buildingName: typeof b.buildingName === "string" ? b.buildingName.trim() : b.buildingName,
+    street: blankToUndef(typeof b.street === "string" ? b.street.trim() : b.street),
+    area: blankToUndef(typeof b.area === "string" ? b.area.trim() : b.area),
+    province: typeof b.province === "string" ? b.province.trim() : b.province,
+    mobileCountry: typeof b.mobileCountry === "string" ? b.mobileCountry.trim().replace(/^\+/, "") : b.mobileCountry,
+    mobile: typeof b.mobile === "string" ? b.mobile.replace(/[\s()-]/g, "") : b.mobile,
+    whatsappCountry: blankToUndef(typeof b.whatsappCountry === "string" ? b.whatsappCountry.trim().replace(/^\+/, "") : b.whatsappCountry),
+    whatsapp: blankToUndef(typeof b.whatsapp === "string" ? b.whatsapp.replace(/[\s()-]/g, "") : b.whatsapp),
+    email: blankToUndef(typeof b.email === "string" ? b.email.trim() : b.email),
+    contactPersonName: blankToUndef(typeof b.contactPersonName === "string" ? b.contactPersonName.trim() : b.contactPersonName),
+    distributorArea: blankToUndef(typeof b.distributorArea === "string" ? b.distributorArea.trim() : b.distributorArea),
+    deliveryResponsibility: blankToUndef(typeof b.deliveryResponsibility === "string" ? b.deliveryResponsibility.trim() : b.deliveryResponsibility),
+    cashReceived: b.cashReceived ?? "N",
+  };
+}
+
+async function runSubscriberValidation(req: Request) {
+  await body("unitId").isInt({ min: 1 }).withMessage("Please choose a unit.").run(req);
+  await body("name")
+    .custom((v) => typeof v === "string" && v.trim().length > 0)
+    .withMessage("Please enter the full name.")
+    .isLength({ max: 500 })
+    .withMessage("The full name is too long.")
+    .run(req);
+
+  await body("shopName")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The flat/villa/shop name is too long.")
+    .run(req);
+
+  await body("floorNo")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The floor number is too long.")
+    .run(req);
+
+  await body("buildingName")
+    .custom((v) => typeof v === "string" && v.trim().length > 0)
+    .withMessage("Please enter the building name.")
+    .isLength({ max: 500 })
+    .withMessage("The building name is too long.")
+    .run(req);
+
+  await body("street")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The street is too long.")
+    .run(req);
+
+  await body("area")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The area is too long.")
+    .run(req);
+
+  await body("province")
+    .custom((v) => typeof v === "string" && v.trim().length > 0)
+    .withMessage("Please enter the state/province/emirate.")
+    .isLength({ max: 500 })
+    .withMessage("The state/province/emirate is too long.")
+    .run(req);
+
+  await body("mobileCountry")
+    .custom((v) => typeof v === "string" && /^\d{1,4}$/.test(v.trim().replace(/^\+/, "")))
+    .withMessage("Please choose the mobile country code.")
+    .run(req);
+
+  await body("mobile")
+    .custom((v) => typeof v === "string" && /^\d{6,15}$/.test(v.replace(/[\s()-]/g, "")))
+    .withMessage("Please enter a valid mobile number.")
+    .run(req);
+
+  await body("whatsappCountry")
+    .optional({ values: "falsy" })
+    .custom((v) => typeof v === "string" && /^\d{1,4}$/.test(v.trim().replace(/^\+/, "")))
+    .withMessage("Please choose the WhatsApp country code.")
+    .run(req);
+
+  await body("whatsapp")
+    .optional({ values: "falsy" })
+    .custom((v) => typeof v === "string" && /^\d{6,15}$/.test(v.replace(/[\s()-]/g, "")))
+    .withMessage("Please enter a valid WhatsApp number.")
+    .run(req);
+
+  await body("email")
+    .optional({ values: "falsy" })
+    .trim()
+    .isEmail()
+    .withMessage("Please enter a valid email address.")
+    .isLength({ max: 320 })
+    .withMessage("Email is too long.")
+    .run(req);
+
+  await body("contactPersonName")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The contact person / sponsor is too long.")
+    .run(req);
+
+  await body("subscriptionMode")
+    .isIn(SUBSCRIPTION_MODES)
+    .withMessage("Please choose a subscription mode.")
+    .run(req);
+
+  await body("distributorArea")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The distribution lead is too long.")
+    .run(req);
+
+  await body("deliveryResponsibility")
+    .optional({ values: "falsy" })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("The delivery responsibility is too long.")
+    .run(req);
+
+  const whatsapp = typeof req.body?.whatsapp === "string" && req.body.whatsapp.trim() ? req.body.whatsapp.trim() : undefined;
+  const whatsappCountry = typeof req.body?.whatsappCountry === "string" && req.body.whatsappCountry.trim() ? req.body.whatsappCountry.trim() : undefined;
+  if (whatsapp && !whatsappCountry) {
+    await body("whatsappCountry").custom(() => false).withMessage("Please choose the WhatsApp country code.").run(req);
+  }
+
+  const deliveryResp = typeof req.body?.deliveryResponsibility === "string" && req.body.deliveryResponsibility.trim() ? req.body.deliveryResponsibility.trim() : undefined;
+  if (deliveryResp && req.body?.subscriptionMode === "Digital") {
+    await body("deliveryResponsibility").custom(() => false).withMessage("Delivery responsibility is only for subscriptions that include Print.").run(req);
+  }
+}
 
 /* ------------------------------------------------------------------ hierarchy and permission */
 
@@ -681,7 +829,7 @@ async function describeSubscribers(
 // whether a unit still has to be chosen (a Unit leader's own unit is fixed).
 export const registrationContext = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
+    const leader = await requireLeader(req.user ?? req.auth);
 
     return sendSuccess(res, "Registration context fetched successfully", {
       leader: leader.organisation,
@@ -696,8 +844,11 @@ export const registrationContext = async (req: Request, res: Response) => {
 // The places directly below one place in the leader's branch, for the next dropdown.
 export const childOrganisations = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { parent_id: parentId } = req.validated?.query as ChildrenQuery;
+    await query("parent_id").isInt({ min: 1 }).withMessage("Please choose a place in the hierarchy.").run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const parentId = Number(req.query.parent_id ?? (req as any).validated?.query?.parent_id);
 
     const parent = (await requireInScope(leader, parentId)).at(-1);
     if (parent?.level === LEVEL.unit) {
@@ -713,8 +864,11 @@ export const childOrganisations = async (req: Request, res: Response) => {
 // Currency and the price of each mode for a unit, from the open campaign of its country.
 export const registrationPrice = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { unit_id: unitId } = req.validated?.query as PriceQuery;
+    await query("unit_id").isInt({ min: 1 }).withMessage("Please choose a unit.").run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const unitId = Number(req.query.unit_id ?? (req as any).validated?.query?.unit_id);
 
     await requireUnitInScope(leader, unitId);
     const price = await openPriceForUnit(unitId);
@@ -730,8 +884,17 @@ export const registrationPrice = async (req: Request, res: Response) => {
 // registered for the open campaign year.
 export const lookupSubscribers = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { q } = req.validated?.query as LookupQuery;
+    await query("q")
+      .trim()
+      .notEmpty()
+      .withMessage("Please enter the subscriber number or mobile number.")
+      .isLength({ max: 100 })
+      .withMessage("That search is too long.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const q = String(req.query.q ?? (req as any).validated?.query?.q).trim();
 
     const matches = await findSubscribers(q);
     const [history, branches, openYear] = await Promise.all([
@@ -759,36 +922,50 @@ export const lookupSubscribers = async (req: Request, res: Response) => {
 // and approver.
 export const createRegistration = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const body = req.body as RegistrationBody;
+    await runSubscriberValidation(req);
+    await body("cashReceived")
+      .optional({ values: "falsy" })
+      .isIn(["Y", "N"])
+      .withMessage("Please answer whether cash was received.")
+      .run(req);
+    await body("subscriberId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Please choose the subscriber again.")
+      .run(req);
+    if (!validate(req, res)) return;
 
-    await requireUnitInScope(leader, body.unitId);
-    const price = await openPriceForUnit(body.unitId);
+    const leader = await requireLeader(req.user ?? req.auth);
+    const data = normalizeSubscriberBody(req.body) as RegistrationBody;
 
-    const amount = price.prices[body.subscriptionMode];
+
+    await requireUnitInScope(leader, data.unitId);
+    const price = await openPriceForUnit(data.unitId);
+
+    const amount = price.prices[data.subscriptionMode];
     if (amount === null) {
       throw AppError.badRequest("Subscription amount not set for this country.");
     }
 
-    const renewal = body.subscriberId ? await requireRenewable(leader, body.subscriberId, price.year) : null;
+    const renewal = data.subscriberId ? await requireRenewable(leader, data.subscriberId, price.year) : null;
 
-    if (!renewal && (await findExistingSubscriber(body)) !== null) {
+    if (!renewal && (await findExistingSubscriber(data)) !== null) {
       throw AppError.badRequest(
         "This subscriber is already registered. Use \"Is Existing Subscriber\" to find and renew them.",
       );
     }
 
     const contact = {
-      name: body.name,
-      mobileCountry: body.mobileCountry,
-      mobile: body.mobile,
-      whatsappCountry: body.whatsapp ? body.whatsappCountry : null,
-      whatsapp: body.whatsapp ?? null,
-      email: body.email ?? null,
+      name: data.name,
+      mobileCountry: data.mobileCountry,
+      mobile: data.mobile,
+      whatsappCountry: data.whatsapp ? data.whatsappCountry : null,
+      whatsapp: data.whatsapp ?? null,
+      email: data.email ?? null,
     };
     const registrationType = renewal ? "RENEW" : "NEW";
     const previousYearUser = renewal ? "Yes" : "No";
-    const addressChange = renewal && addressChanged(body, renewal.previous) ? "Yes" : "No";
+    const addressChange = renewal && addressChanged(data, renewal.previous) ? "Yes" : "No";
 
     const now = new Date();
     const subscriberId = await prisma.$transaction(async (tx) => {
@@ -815,13 +992,13 @@ export const createRegistration = async (req: Request, res: Response) => {
           distributor_area, delivery_responsibility, contact_person_name, ledger_no,
           added_by, created_at
         ) VALUES (
-          ${master.subscriberId}, ${price.id}, ${body.unitId},
+          ${master.subscriberId}, ${price.id}, ${data.unitId},
           ${registrationType}, 'DIRECT', 'APPROVED', ${leader.userId}, ${now},
-          ${previousYearUser}, ${price.year}, ${body.subscriptionMode}, 1,
-          ${price.currency}, ${amount}, ${body.cashReceived},
-          ${body.shopName ?? null}, ${body.floorNo ?? null}, ${body.buildingName}, ${body.street ?? null},
-          ${body.area ?? null}, ${body.province}, ${addressChange},
-          ${body.distributorArea ?? null}, ${body.deliveryResponsibility ?? null}, ${body.contactPersonName ?? null},
+          ${previousYearUser}, ${price.year}, ${data.subscriptionMode}, 1,
+          ${price.currency}, ${amount}, ${data.cashReceived},
+          ${data.shopName ?? null}, ${data.floorNo ?? null}, ${data.buildingName}, ${data.street ?? null},
+          ${data.area ?? null}, ${data.province}, ${addressChange},
+          ${data.distributorArea ?? null}, ${data.deliveryResponsibility ?? null}, ${data.contactPersonName ?? null},
           ${master.ledgerNo ?? null},
           ${leader.userId}, ${now}
         )`;
@@ -904,8 +1081,22 @@ const withTarget = (progress: Progress) => ({
 // subscriptions count; "paid" is cash received (docs/TASKS.md C14).
 export const registrationAnalytics = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { year: requestedYear, org_id: orgId } = (req.validated?.query ?? {}) as AnalyticsQuery;
+    await query("year")
+      .optional({ values: "falsy" })
+      .isInt({ min: 2000, max: 2100 })
+      .withMessage("Please choose a valid year.")
+      .run(req);
+    await query("org_id")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Please choose a place.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const queryData = (req as any).validated?.query ?? req.query;
+    const requestedYear = queryData.year !== undefined && queryData.year !== "" ? Number(queryData.year) : undefined;
+    const orgId = queryData.org_id !== undefined && queryData.org_id !== "" ? Number(queryData.org_id) : undefined;
 
     const rootId = orgId ?? leader.organisation.id;
     if (orgId !== undefined && orgId !== leader.organisation.id) {
@@ -1034,8 +1225,28 @@ type RegistrationRow = {
 // Approved new registrations (not renewals) for one year in the leader's branch, newest first.
 export const listRegistrations = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { year: requestedYear, page, page_size: pageSize } = req.validated?.query as RegistrationsQuery;
+    await query("year")
+      .optional({ values: "falsy" })
+      .isInt({ min: 2000, max: 2100 })
+      .withMessage("Please choose a valid year.")
+      .run(req);
+    await query("page")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Page must be at least 1.")
+      .run(req);
+    await query("page_size")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Page size must be between 1 and 100.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const queryData = (req as any).validated?.query ?? req.query;
+    const requestedYear = queryData.year !== undefined && queryData.year !== "" ? Number(queryData.year) : undefined;
+    const page = queryData.page !== undefined && queryData.page !== "" ? Math.max(1, Number(queryData.page)) : 1;
+    const pageSize = queryData.page_size !== undefined && queryData.page_size !== "" ? Math.min(100, Math.max(1, Number(queryData.page_size))) : 10;
 
     const placeIds = [...(await branchOf(leader)).keys()];
     const years = await subscriptionYears(placeIds);
@@ -1065,11 +1276,11 @@ export const listRegistrations = async (req: Request, res: Response) => {
       prisma.$queryRawUnsafe<RegistrationRow[]>(
         `SELECT d.subscriber_id, m.name, m.mobile_country, m.mobile, d.unit_id, d.subscription_mode,
                 d.currency, d.amount, d.cash_received, d.approval_status, d.registration_method, d.created_at
-         FROM pv_subscription_details d
-         JOIN pv_subscription_master m ON m.subscriber_id = d.subscriber_id
-         WHERE ${where}
-         ORDER BY d.created_at DESC, d.subscriber_id DESC
-         LIMIT ? OFFSET ?`,
+          FROM pv_subscription_details d
+          JOIN pv_subscription_master m ON m.subscriber_id = d.subscriber_id
+          WHERE ${where}
+          ORDER BY d.created_at DESC, d.subscriber_id DESC
+          LIMIT ? OFFSET ?`,
         ...placeIds,
         year,
         pageSize,
@@ -1112,8 +1323,34 @@ export const listRegistrations = async (req: Request, res: Response) => {
 // needs to renew them. Without an open campaign, the latest year with subscriptions is used.
 export const listRenewals = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { status, search, page, page_size: pageSize } = req.validated?.query as RenewalsQuery;
+    await query("status")
+      .optional({ values: "falsy" })
+      .isIn(["all", "renew", "renewed"])
+      .withMessage("Invalid status.")
+      .run(req);
+    await query("search")
+      .optional({ values: "falsy" })
+      .isLength({ max: 100 })
+      .withMessage("That search is too long.")
+      .run(req);
+    await query("page")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Page must be at least 1.")
+      .run(req);
+    await query("page_size")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Page size must be between 1 and 100.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const queryData = (req as any).validated?.query ?? req.query;
+    const status = (queryData.status as "all" | "renew" | "renewed") || "all";
+    const search = typeof queryData.search === "string" && queryData.search.trim() ? queryData.search.trim() : undefined;
+    const page = queryData.page !== undefined && queryData.page !== "" ? Math.max(1, Number(queryData.page)) : 1;
+    const pageSize = queryData.page_size !== undefined && queryData.page_size !== "" ? Math.min(100, Math.max(1, Number(queryData.page_size))) : 10;
 
     const placeIds = [...(await branchOf(leader)).keys()];
     const year = (await openYearFor(leader.organisation.id)) ?? (await subscriptionYears(placeIds))[0] ?? null;
@@ -1198,8 +1435,28 @@ type PublicRow = RegistrationRow & {
 // newest first.
 export const listPublicRegistrations = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { status, page, page_size: pageSize } = req.validated?.query as PublicRegistrationsQuery;
+    await query("status")
+      .optional({ values: "falsy" })
+      .isIn(["PENDING", "APPROVED", "REJECTED"])
+      .withMessage("Invalid status.")
+      .run(req);
+    await query("page")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Page must be at least 1.")
+      .run(req);
+    await query("page_size")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Page size must be between 1 and 100.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const queryData = (req as any).validated?.query ?? req.query;
+    const status = (queryData.status as "PENDING" | "APPROVED" | "REJECTED") || "PENDING";
+    const page = queryData.page !== undefined && queryData.page !== "" ? Math.max(1, Number(queryData.page)) : 1;
+    const pageSize = queryData.page_size !== undefined && queryData.page_size !== "" ? Math.min(100, Math.max(1, Number(queryData.page_size))) : 10;
 
     const placeIds = [...(await branchOf(leader)).keys()];
     const where = `d.unit_id IN (${inPlaceholders(placeIds)}) AND d.registration_method = 'PUBLIC' AND d.approval_status = ?`;
@@ -1278,8 +1535,11 @@ async function requirePendingPublic(leader: Leader, subscriberId: number) {
 // Approve: the subscription counts from now on, and the leader is recorded as approver and adder.
 export const approvePublicRegistration = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { subscriber_id: subscriberId } = req.validated?.params as z.infer<typeof subscriberParams>;
+    await param("subscriber_id").isInt({ min: 1 }).withMessage("Subscriber not found.").run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const subscriberId = Number(req.params.subscriber_id ?? (req as any).validated?.params?.subscriber_id);
 
     await requirePendingPublic(leader, subscriberId);
 
@@ -1305,8 +1565,18 @@ export const approvePublicRegistration = async (req: Request, res: Response) => 
 // Reject, with the reason shown in the list.
 export const rejectPublicRegistration = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { subscriber_id: subscriberId } = req.validated?.params as z.infer<typeof subscriberParams>;
+    await param("subscriber_id").isInt({ min: 1 }).withMessage("Subscriber not found.").run(req);
+    await body("reason")
+      .trim()
+      .notEmpty()
+      .withMessage("Please enter the reason for rejecting.")
+      .isLength({ max: 500 })
+      .withMessage("The reason for rejecting is too long.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const subscriberId = Number(req.params.subscriber_id ?? (req as any).validated?.params?.subscriber_id);
     const { reason } = req.body as z.infer<typeof rejectBody>;
 
     await requirePendingPublic(leader, subscriberId);
@@ -1371,7 +1641,10 @@ export const publicPriceQuery = priceQuery;
 // still has to be chosen. Same shape as the leader's registration context.
 export const publicContext = async (req: Request, res: Response) => {
   try {
-    const { root_id: rootId } = req.validated?.params as z.infer<typeof publicRootParams>;
+    await param("root_id").isInt({ min: 1 }).withMessage("This registration link is not valid.").run(req);
+    if (!validate(req, res)) return;
+
+    const rootId = Number(req.params.root_id ?? (req as any).validated?.params?.root_id);
     const path = await requireLinkRoot(rootId);
     const root = path.at(-1)!;
 
@@ -1387,8 +1660,12 @@ export const publicContext = async (req: Request, res: Response) => {
 
 export const publicChildren = async (req: Request, res: Response) => {
   try {
-    const { root_id: rootId } = req.validated?.params as z.infer<typeof publicRootParams>;
-    const { parent_id: parentId } = req.validated?.query as z.infer<typeof publicChildrenQuery>;
+    await param("root_id").isInt({ min: 1 }).withMessage("This registration link is not valid.").run(req);
+    await query("parent_id").isInt({ min: 1 }).withMessage("Please choose a place in the hierarchy.").run(req);
+    if (!validate(req, res)) return;
+
+    const rootId = Number(req.params.root_id ?? (req as any).validated?.params?.root_id);
+    const parentId = Number(req.query.parent_id ?? (req as any).validated?.query?.parent_id);
 
     await requireLinkRoot(rootId);
     const parent = (await requireUnderRoot(rootId, parentId)).at(-1);
@@ -1402,8 +1679,12 @@ export const publicChildren = async (req: Request, res: Response) => {
 
 export const publicPrice = async (req: Request, res: Response) => {
   try {
-    const { root_id: rootId } = req.validated?.params as z.infer<typeof publicRootParams>;
-    const { unit_id: unitId } = req.validated?.query as PriceQuery;
+    await param("root_id").isInt({ min: 1 }).withMessage("This registration link is not valid.").run(req);
+    await query("unit_id").isInt({ min: 1 }).withMessage("Please choose a unit.").run(req);
+    if (!validate(req, res)) return;
+
+    const rootId = Number(req.params.root_id ?? (req as any).validated?.params?.root_id);
+    const unitId = Number(req.query.unit_id ?? (req as any).validated?.query?.unit_id);
 
     await requireLinkRoot(rootId);
     await requireUnitUnderRoot(rootId, unitId);
@@ -1419,13 +1700,17 @@ export const publicPrice = async (req: Request, res: Response) => {
 // mobile for the same year is refused.
 export const createPublicRegistration = async (req: Request, res: Response) => {
   try {
-    const body = req.body as PublicRegistrationBody;
+    await body("rootId").isInt({ min: 1 }).withMessage("This registration link is not valid.").run(req);
+    await runSubscriberValidation(req);
+    if (!validate(req, res)) return;
 
-    await requireLinkRoot(body.rootId);
-    await requireUnitUnderRoot(body.rootId, body.unitId);
-    const price = await openPriceForUnit(body.unitId);
+    const data = normalizeSubscriberBody(req.body) as PublicRegistrationBody;
 
-    const amount = price.prices[body.subscriptionMode];
+    await requireLinkRoot(data.rootId);
+    await requireUnitUnderRoot(data.rootId, data.unitId);
+    const price = await openPriceForUnit(data.unitId);
+
+    const amount = price.prices[data.subscriptionMode];
     if (amount === null) {
       throw AppError.badRequest("Subscription amount not set for this country.");
     }
@@ -1436,8 +1721,8 @@ export const createPublicRegistration = async (req: Request, res: Response) => {
        WHERE d.registration_method = 'PUBLIC' AND d.approval_status = 'PENDING' AND d.subscription_year = ?
          AND m.mobile_country = ? AND m.mobile = ?`,
       price.year,
-      body.mobileCountry,
-      body.mobile,
+      data.mobileCountry,
+      data.mobile,
     );
     if (Number(pending?.total ?? 0) > 0) {
       throw AppError.badRequest("A registration with this mobile number is already waiting for approval.");
@@ -1447,12 +1732,12 @@ export const createPublicRegistration = async (req: Request, res: Response) => {
     const subscriberId = await prisma.$transaction(async (tx) => {
       const master = await tx.pvSubscriptionMaster.create({
         data: {
-          name: body.name,
-          mobileCountry: body.mobileCountry,
-          mobile: body.mobile,
-          whatsappCountry: body.whatsapp ? body.whatsappCountry : null,
-          whatsapp: body.whatsapp ?? null,
-          email: body.email ?? null,
+          name: data.name,
+          mobileCountry: data.mobileCountry,
+          mobile: data.mobile,
+          whatsappCountry: data.whatsapp ? data.whatsappCountry : null,
+          whatsapp: data.whatsapp ?? null,
+          email: data.email ?? null,
           status: "PENDING",
         },
         select: { subscriberId: true },
@@ -1467,13 +1752,13 @@ export const createPublicRegistration = async (req: Request, res: Response) => {
           shop_name, floor_no, building_name, street, area, province, address_change,
           distributor_area, delivery_responsibility, contact_person_name, created_at
         ) VALUES (
-          ${master.subscriberId}, ${price.id}, ${body.unitId},
+          ${master.subscriberId}, ${price.id}, ${data.unitId},
           'NEW', 'PUBLIC', 'PENDING',
-          'No', ${price.year}, ${body.subscriptionMode}, 1,
+          'No', ${price.year}, ${data.subscriptionMode}, 1,
           ${price.currency}, ${amount}, 'N',
-          ${body.shopName ?? null}, ${body.floorNo ?? null}, ${body.buildingName}, ${body.street ?? null},
-          ${body.area ?? null}, ${body.province}, 'No',
-          ${body.distributorArea ?? null}, ${body.deliveryResponsibility ?? null}, ${body.contactPersonName ?? null},
+          ${data.shopName ?? null}, ${data.floorNo ?? null}, ${data.buildingName}, ${data.street ?? null},
+          ${data.area ?? null}, ${data.province}, 'No',
+          ${data.distributorArea ?? null}, ${data.deliveryResponsibility ?? null}, ${data.contactPersonName ?? null},
           ${now}
         )`;
 
@@ -1543,9 +1828,18 @@ const amountOf = (value: unknown) => (value === null || value === undefined ? nu
 // in the hierarchy, who added and approved it, and every year as history.
 export const subscriberDetails = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { subscriber_id: subscriberId } = req.validated?.params as z.infer<typeof subscriberParams>;
-    const { year } = (req.validated?.query ?? {}) as z.infer<typeof subscriberViewQuery>;
+    await param("subscriber_id").isInt({ min: 1 }).withMessage("Subscriber not found.").run(req);
+    await query("year")
+      .optional({ values: "falsy" })
+      .isInt({ min: 2000, max: 2100 })
+      .withMessage("Please choose a valid year.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const subscriberId = Number(req.params.subscriber_id ?? (req as any).validated?.params?.subscriber_id);
+    const queryData = (req as any).validated?.query ?? req.query;
+    const year = queryData.year !== undefined && queryData.year !== "" ? Number(queryData.year) : undefined;
 
     const [master, rows] = await Promise.all([
       prisma.pvSubscriptionMaster.findUnique({ where: { subscriberId }, select: MASTER_SELECT }),
@@ -1639,9 +1933,20 @@ export const subscriberDetails = async (req: Request, res: Response) => {
 // worked out again from the (possibly new) unit and mode.
 export const updateSubscription = async (req: Request, res: Response) => {
   try {
-    const leader = await requireLeader(req.auth);
-    const { subscriber_id: subscriberId, year } = req.validated?.params as z.infer<typeof subscriptionParams>;
-    const body = req.body as SubscriptionUpdateBody;
+    await param("subscriber_id").isInt({ min: 1 }).withMessage("Subscriber not found.").run(req);
+    await param("year").isInt({ min: 2000, max: 2100 }).withMessage("Please choose a valid year.").run(req);
+    await runSubscriberValidation(req);
+    await body("cashReceived")
+      .optional({ values: "falsy" })
+      .isIn(["Y", "N"])
+      .withMessage("Please answer whether cash was received.")
+      .run(req);
+    if (!validate(req, res)) return;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const subscriberId = Number(req.params.subscriber_id ?? (req as any).validated?.params?.subscriber_id);
+    const year = Number(req.params.year ?? (req as any).validated?.params?.year);
+    const data = normalizeSubscriberBody(req.body) as SubscriptionUpdateBody;
 
     const row = (await allSubscriptions(subscriberId)).find((subscription) => subscription.subscription_year === year);
     if (!row) {
@@ -1655,17 +1960,17 @@ export const updateSubscription = async (req: Request, res: Response) => {
       throw AppError.badRequest(blocker);
     }
 
-    await requireUnitInScope(leader, body.unitId);
-    const price = await openPriceForUnit(body.unitId);
+    await requireUnitInScope(leader, data.unitId);
+    const price = await openPriceForUnit(data.unitId);
     if (price.year !== year) {
       throw AppError.badRequest(`The campaign for that unit's country is for ${price.year}, not ${year}.`);
     }
-    const amount = price.prices[body.subscriptionMode];
+    const amount = price.prices[data.subscriptionMode];
     if (amount === null) {
       throw AppError.badRequest("Subscription amount not set for this country.");
     }
 
-    const duplicate = await findExistingSubscriber(body as RegistrationBody);
+    const duplicate = await findExistingSubscriber(data as RegistrationBody);
     if (duplicate !== null && duplicate !== subscriberId) {
       throw AppError.badRequest("Another subscriber already has this name and mobile number.");
     }
@@ -1674,26 +1979,26 @@ export const updateSubscription = async (req: Request, res: Response) => {
       await tx.pvSubscriptionMaster.update({
         where: { subscriberId },
         data: {
-          name: body.name,
-          mobileCountry: body.mobileCountry,
-          mobile: body.mobile,
-          whatsappCountry: body.whatsapp ? body.whatsappCountry : null,
-          whatsapp: body.whatsapp ?? null,
-          email: body.email ?? null,
+          name: data.name,
+          mobileCountry: data.mobileCountry,
+          mobile: data.mobile,
+          whatsappCountry: data.whatsapp ? data.whatsappCountry : null,
+          whatsapp: data.whatsapp ?? null,
+          email: data.email ?? null,
         },
         select: { subscriberId: true },
       });
 
       await tx.$executeRaw`
         UPDATE pv_subscription_details
-        SET unit_id = ${body.unitId}, subscription_id = ${price.id},
-            subscription_mode = ${body.subscriptionMode}, currency = ${price.currency}, amount = ${amount},
-            cash_received = ${body.cashReceived},
-            shop_name = ${body.shopName ?? null}, floor_no = ${body.floorNo ?? null},
-            building_name = ${body.buildingName}, street = ${body.street ?? null}, area = ${body.area ?? null},
-            province = ${body.province}, distributor_area = ${body.distributorArea ?? null},
-            delivery_responsibility = ${body.deliveryResponsibility ?? null},
-            contact_person_name = ${body.contactPersonName ?? null}
+        SET unit_id = ${data.unitId}, subscription_id = ${price.id},
+            subscription_mode = ${data.subscriptionMode}, currency = ${price.currency}, amount = ${amount},
+            cash_received = ${data.cashReceived},
+            shop_name = ${data.shopName ?? null}, floor_no = ${data.floorNo ?? null},
+            building_name = ${data.buildingName}, street = ${data.street ?? null}, area = ${data.area ?? null},
+            province = ${data.province}, distributor_area = ${data.distributorArea ?? null},
+            delivery_responsibility = ${data.deliveryResponsibility ?? null},
+            contact_person_name = ${data.contactPersonName ?? null}
         WHERE subscriber_id = ${subscriberId} AND subscription_year = ${year} AND approval_status <> 'REJECTED'`;
     });
 
