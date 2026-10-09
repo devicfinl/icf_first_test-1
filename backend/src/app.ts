@@ -7,6 +7,7 @@ import { requestContext } from "./middlewares/request-context.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { memberRouter } from "./modules/member/member.routes.js";
+import { pvPublicRouter, pvRouter } from "./modules/pv/pv.routes.js";
 import { AppError } from "./utils/app-error.js";
 import { AppResponse } from "./utils/app-response.js";
 import { sendError } from "./utils/response.js";
@@ -48,6 +49,8 @@ app.use(apiRateLimit);
 
 app.use("/api/auth", authRouter);
 app.use("/api/member", memberRouter);
+app.use("/api/pv", pvRouter);
+app.use("/api/public/pv", pvPublicRouter);
 
 app.use((_req: Request, res: Response) => {
   sendError(res, 404, "Not found");

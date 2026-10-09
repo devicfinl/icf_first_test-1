@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-// These mirror backend/src/modules/auth/auth.schema.ts. They exist to catch mistakes before a
+// These mirror the schemas in backend/src/modules/auth/auth.controller.ts. They exist to catch mistakes before a
 // round trip, not to enforce the rules — the server validates everything again and its answer wins.
 
-// Membership numbers are 2 letters followed by 7 digits (e.g. "OM2400110"). Mirrors
-// backend/src/modules/auth/auth.schema.ts; the server validates again and its answer wins.
+// Membership numbers are 2 letters followed by 7 digits.
 const USERNAME_PATTERN = /^[A-Z]{2}\d{7}$/;
 
 export const loginSchema = z.object({
@@ -32,3 +31,83 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+
+export const cancelAccountSchema = z.object({
+  currentPassword: z.string().min(1, "Please enter your current password."),
+  confirm: z.literal(true, { error: "Please confirm that you want to cancel your account." }),
+});
+export type CancelAccountFormData = z.infer<typeof cancelAccountSchema>;
+
+// Add Subscriber (Pravasi Vayana). Mirrors registrationBody in backend/src/modules/pv/pv.controller.ts.
+// Every field is a string in the form; empty optional fields are dropped before sending.
+const pvRequired = (label: string) =>
+  z.string().trim().min(1, `Please enter ${label}.`).max(500, `${label[0]!.toUpperCase()}${label.slice(1)} is too long.`);
+const pvOptional = (label: string) =>
+  z.string().trim().max(500, `${label[0]!.toUpperCase()}${label.slice(1)} is too long.`);
+
+export const addSubscriberSchema = z
+  .object({
+    // Step 1
+    // Y: renewing the existing subscriber chosen with the lookup (subscriberId).
+    isExisting: z.enum(["Y", "N"]),
+    subscriberId: z.number().int().positive().optional(),
+    unitId: z.number({ error: "Please choose a unit." }).int().positive("Please choose a unit."),
+    name: pvRequired("the full name"),
+    shopName: pvOptional("the flat/villa/shop name"),
+    floorNo: pvOptional("the floor number"),
+    buildingName: pvRequired("the building name"),
+    street: pvOptional("the street"),
+    area: pvOptional("the area"),
+    province: pvRequired("the state/province/emirate"),
+    mobileCountry: z
+      .string()
+      .trim()
+      .regex(/^\+?\d{1,4}$/, "Please enter the mobile country code."),
+    mobile: z
+      .string()
+      .transform((value) => value.replace(/[\s()-]/g, ""))
+      .pipe(z.string().regex(/^\d{6,15}$/, "Please enter a valid mobile number.")),
+    whatsappCountry: z
+      .string()
+      .trim()
+      .regex(/^(\+?\d{1,4})?$/, "Please enter the WhatsApp country code."),
+    whatsapp: z
+      .string()
+      .transform((value) => value.replace(/[\s()-]/g, ""))
+      .pipe(z.string().regex(/^(\d{6,15})?$/, "Please enter a valid WhatsApp number.")),
+    email: z.union([z.literal(""), z.email("Please enter a valid email address.").max(320)]),
+    contactPersonName: pvOptional("the contact person / sponsor"),
+    // Step 2
+    subscriptionMode: z.enum(["Print", "Digital", "Print&Digital"], {
+      error: "Please choose a subscription mode.",
+    }),
+    distributorArea: pvOptional("the distribution lead"),
+    deliveryResponsibility: pvOptional("the delivery responsibility"),
+    cashReceived: z.enum(["Y", "N"]),
+  })
+  .refine((data) => !(data.whatsapp && !data.whatsappCountry), {
+    message: "Please enter the WhatsApp country code.",
+    path: ["whatsappCountry"],
+  });
+export type AddSubscriberFormInput = z.input<typeof addSubscriberSchema>;
+export type AddSubscriberFormData = z.output<typeof addSubscriberSchema>;
+
+/** The fields on step 1, validated before moving on to step 2. */
+export const ADD_SUBSCRIBER_STEP1_FIELDS = [
+  "unitId",
+  "isExisting",
+  "subscriberId",
+  "name",
+  "shopName",
+  "floorNo",
+  "buildingName",
+  "street",
+  "area",
+  "province",
+  "mobileCountry",
+  "mobile",
+  "whatsappCountry",
+  "whatsapp",
+  "email",
+  "contactPersonName",
+] as const;

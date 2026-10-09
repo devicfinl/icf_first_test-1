@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import LegalPage, {
   LegalContact,
   LegalList,
@@ -10,7 +11,7 @@ import LegalPage, {
 // anything else that collects new data ships.
 function PrivacyPolicyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="23 September 2026">
+    <LegalPage title="Privacy Policy" updated="1 October 2026">
       <LegalSection title="1. Introduction">
         <p>
           Welcome to ICF FIRST, the member portal developed and operated by ICF International ("we", "us",
@@ -116,7 +117,9 @@ function PrivacyPolicyPage() {
         <LegalSubsection title="4.1 Within ICF International">
           <p>
             Authorised office-bearers and administrators of ICF International may see member information
-            where their role requires it, for example to manage membership or committee records.
+            where their role requires it, for example to manage membership or committee records. This
+            includes the leaders of your higher committees in the ICF organisation, who may review a member's
+            activity on the portal to make sure it follows ICF's decisions, rules and policies.
           </p>
         </LegalSubsection>
 
@@ -142,6 +145,15 @@ function PrivacyPolicyPage() {
           as it is needed to maintain membership records. Server logs are kept only as long as needed for
           security and troubleshooting. When information is no longer needed, we delete or anonymise it,
           except where we must keep it for legal, regulatory, or legitimate organisational purposes.
+        </p>
+        <p>
+          If you cancel your ICF FIRST account, you can no longer sign in, but your membership, committee,
+          donation and subscription records are kept as part of ICF International's organisational records.
+          See{" "}
+          <Link to="/deleteAccount" className="text-blue-700 underline-offset-2 hover:underline">
+            Account Deletion
+          </Link>
+          .
         </p>
       </LegalSection>
 
@@ -190,8 +202,9 @@ function PrivacyPolicyPage() {
         />
         <p>
           You can view your membership record at any time on your profile page. To exercise any of these
-          rights, or to correct details in your record, please contact us using the details in Section 11. We
-          will respond within 30 days of receiving your request.
+          rights, or to correct details in your record, please contact us using the details in Section 11, or
+          ask the leaders of your higher committee to pass your request on. We will respond within 30 days of
+          receiving your request.
         </p>
       </LegalSection>
 

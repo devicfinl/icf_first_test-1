@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, MapPin, UserRound, UsersRound } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
 import {
@@ -22,6 +21,7 @@ import {
   selectPosition,
 } from "../thunks/authThunk";
 import SessionLoading from "../components/SessionLoading";
+import Loader from "../components/loading-ui/Loader";
 import type { AppDispatch, RootState } from "../store/store";
 import type { MemberPosition } from "../types/auth";
 import { toNormalCase } from "../utilities/textCase";
@@ -39,27 +39,6 @@ const THEMES = [
 
 function committeeLabel(level: string | null): string {
   return level ? `${toNormalCase(level)} Committee` : "Committee";
-}
-
-function CardSkeleton() {
-  return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm">
-      <div className="flex items-start justify-between">
-        <Skeleton className="size-16 rounded-2xl" />
-        <Skeleton className="h-6 w-20 rounded-full" />
-      </div>
-
-      <div className="mt-5 space-y-2">
-        <Skeleton className="h-6 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-4 w-2/5" />
-      </div>
-
-      <div className="mt-6 flex justify-end">
-        <Skeleton className="h-4 w-32" />
-      </div>
-    </div>
-  );
 }
 
 type CardProps = {
@@ -260,10 +239,7 @@ function SelectPositionPage() {
         <div className="mt-6 sm:mt-7 w-full max-w-[760px] rounded-[28px] border border-[#E7E2D9] bg-white p-6 sm:p-9 shadow-[0_4px_25px_rgba(0,0,0,0.03)] animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-500">
           {positions.length === 0 ? (
             loading ? (
-              <div className="grid gap-5 sm:grid-cols-2">
-                <CardSkeleton />
-                <CardSkeleton />
-              </div>
+              <Loader label="Loading your positions…" />
             ) : (
               <Empty className="rounded-2xl border border-slate-200 bg-white py-12 shadow-none">
                 <EmptyHeader>

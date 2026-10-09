@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { body } from "express-validator";
+import { z } from "zod";
 import { prisma } from "../../db/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { AppResponse } from "../../utils/app-response.js";
@@ -12,10 +13,19 @@ import {
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { resolveOrganisationSummaries } from "../../utils/reference-data.js";
 import { revokeToken } from "../../utils/token-denylist.js";
+import { sendError } from "../../utils/response.js";
 import { validate } from "../../utils/validate.js";
 
 // 2 letters + 7 digits. Checked before any lookup, so a bad format never reveals whether an account exists.
 const USERNAME_PATTERN = /^[A-Z]{2}\d{7}$/;
+
+// Cancelling an account: the password proves it's the member, and `confirm` that they meant it.
+export const cancelAccountBody = z.strictObject({
+  currentPassword: z.string({ error: "Please enter your current password." }).min(1, "Please enter your current password."),
+  confirm: z.literal(true, { error: "Please confirm that you want to cancel your account." }),
+});
+
+export type CancelAccountBody = z.infer<typeof cancelAccountBody>;
 
 /* ------------------------------------------------------------------ handlers */
 
@@ -269,4 +279,48 @@ export const memberChangePassword = async (req: Request, res: Response, next: Ne
   revokeToken(req.user!.jti, req.user!.exp);
 
   return next(new AppResponse("Password updated successfully", { auth: tokenPayload(token) }));
+};
+
+// Cancels the member's portal account: sign-in is switched off (users.active = 0) and this session's
+// token is revoked. Nothing is deleted - the membership record, donations and subscription history
+// stay with the organisation, and the office can restore access.
+export const memberCancelAccount = async (req: Request, res: Response, next?: NextFunction) => {
+  try {
+    await body("currentPassword").notEmpty().withMessage("Please enter your current password.").run(req);
+    await body("confirm")
+      .custom((value) => value === true)
+      .withMessage("Please confirm that you want to cancel your account.")
+      .run(req);
+
+    if (!validate(req, res)) return;
+
+    const { currentPassword } = (req.body ?? {}) as CancelAccountBody;
+
+    const authUser = req.user ?? req.auth;
+    if (!authUser) {
+      throw new AppError("Token not provided", 401);
+    }
+
+    const user = await requireActiveUser(authUser.userId);
+
+    if (!user.password || !(await verifyPassword(user.password, currentPassword))) {
+      throw new AppError("Your current password is not correct.", 401);
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { active: 0 }, select: { id: true } });
+    revokeToken(authUser.jti, authUser.exp);
+
+    if (next) {
+      return next(new AppResponse("Your account has been cancelled"));
+    }
+    return res.status(200).json(new AppResponse("Your account has been cancelled").toJSON());
+  } catch (error) {
+    if (next) {
+      return next(error);
+    }
+    if (error instanceof AppError) {
+      return sendError(res, error.statusCode, error.message, error.details);
+    }
+    return sendError(res, 500, "Member cancel account error:");
+  }
 };

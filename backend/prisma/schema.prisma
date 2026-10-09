@@ -167,3 +167,40 @@ model HierarchyName {
 
   @@map("hierarchy_names")
 }
+
+// Pravasi Vayana price table: one row per country per year. Read-only from the API.
+// amount is the Print price; the other two modes have their own columns.
+model VayanaSubscription {
+  id                Int       @id @map("ID")
+  amount            Float?
+  priceDigital      Float?    @map("price_digital")
+  pricePrintDigital Float?    @map("price_print_digital")
+  country           String?   @db.VarChar(2)
+  currency          String?   @db.VarChar(20)
+  year              String?   @db.VarChar(4)
+  campaignStatus    String?   @map("campaign_status") @db.VarChar(30)
+  closedOn          DateTime? @map("closed_on") @db.Date
+
+  @@map("vayana_subscription")
+}
+
+// Pravasi Vayana subscriber (one row per person). Their yearly subscriptions are in
+// pv_subscription_details, which has no primary key and is written with raw SQL.
+model PvSubscriptionMaster {
+  subscriberId      Int       @id @default(autoincrement()) @map("subscriber_id")
+  ledgerNo          String?   @map("ledger_no") @db.VarChar(100)
+  name              String    @db.VarChar(500)
+  mobileCountry     String?   @map("mobile_country") @db.VarChar(20)
+  mobile            String?   @db.VarChar(100)
+  whatsappCountry   String?   @map("whatsapp_country") @db.VarChar(20)
+  whatsapp          String?   @db.VarChar(100)
+  tel               String?   @db.VarChar(100)
+  email             String?   @db.VarChar(320)
+  religion          String?   @db.VarChar(100)
+  isIcfMember       String?   @map("is_icf_member")
+  membershipId      String?   @map("membership_id") @db.VarChar(100)
+  status            String
+  firstSubscribedAt DateTime? @map("first_subscribed_at")
+
+  @@map("pv_subscription_master")
+}

@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Box, Button, Card, Flex, Heading, Separator, Text } from "@radix-ui/themes";
 import { KeyRound, LogOut, UserRound } from "lucide-react";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 import { fetchProfile, logoutUser } from "../thunks/authThunk";
 import type { AppDispatch, RootState } from "../store/store";
+import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
+import Loader from "../components/loading-ui/Loader";
 
 /** One label/value row; anything the legacy database left blank is simply not shown. */
 function Detail({ label, value }: { label: string; value: string | null | undefined }) {
@@ -26,6 +28,7 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
 
 function Homepage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { profile, profileLoading, position, membershipNo, profileError } = useSelector(
     (state: RootState) => state.auth,
@@ -42,7 +45,7 @@ function Homepage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4 py-10">
+    <main className="flex justify-center">
       <Card size="4" className="w-full max-w-lg shadow-lg">
         <Flex direction="column" gap="4">
           <Flex align="center" gap="4">
@@ -79,9 +82,7 @@ function Homepage() {
           <Separator size="4" />
 
           {profileLoading && (
-            <Text size="2" color="gray">
-              Loading your profile...
-            </Text>
+            <Loader variant="inline" label="Loading your profile…" className="text-sm" />
           )}
 
           {profileError && !profileLoading && (
@@ -111,7 +112,7 @@ function Homepage() {
               View full profile
             </Button>
 
-            <Button size="3" variant="soft" onClick={() => navigate("/change-password")}>
+            <Button size="3" variant="soft" onClick={() => navigate(withDrawer(location, CHANGE_PASSWORD_DRAWER))}>
               <KeyRound size={16} />
               Change password
             </Button>

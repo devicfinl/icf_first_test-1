@@ -98,6 +98,8 @@ export type MemberProfile = {
 export type Session = {
   token: string;
   membershipNo: string;
+  /** users.name from login or /auth/me. Optional: sessions stored before it was kept lack it. */
+  name?: string | null;
   position: MemberPosition | null;
   positions: MemberPosition[];
   requiresPositionSelection: boolean;
