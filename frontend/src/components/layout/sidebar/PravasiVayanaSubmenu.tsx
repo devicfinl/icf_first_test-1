@@ -1,25 +1,34 @@
+import { useLocation, useNavigate } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 
 import SidebarSubmenu from "./SidebarSubmenu";
 import type { SidebarEntryProps, SubmenuToggleProps } from "./types";
 
 const ITEMS: { label: string; to: string }[] = [
-  { label: "New Subscriber", to: "/pv/new" },
-  { label: "Renew Subscriber", to: "/pv/renew" },
-  { label: "Public Subscription", to: "/pv/public" },
   { label: "Analytics", to: "/pv/analytics" },
+  { label: "Subscribers", to: "/pv/new" },
+  { label: "Renew Subscribers", to: "/pv/renew" },
+  { label: "Public Subscriptions", to: "/pv/public" },
 ];
 
-/** Pravasi Vayana pages. Only Region, Division and Unit leaders can open them. */
-function PravasiVayanaSubmenu({ isLeader, ...props }: SidebarEntryProps & SubmenuToggleProps & { isLeader: boolean }) {
-  const items = isLeader ? ITEMS : ITEMS.map(({ label }) => ({ label }));
+/** Pravasi Vayana pages, open to every signed-in member. The server decides what each may do. */
+function PravasiVayanaSubmenu(props: SidebarEntryProps & SubmenuToggleProps) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  // Opening the menu from outside the module lands on Analytics.
+  const onToggle = () => {
+    props.onToggle();
+    if (!props.open && !pathname.startsWith("/pv/")) navigate("/pv/analytics");
+  };
 
   return (
     <SidebarSubmenu
       label="Pravasi vayana"
       icon={BookOpen}
-      items={items}
+      items={ITEMS}
       {...props}
+      onToggle={onToggle}
     />
   );
 }

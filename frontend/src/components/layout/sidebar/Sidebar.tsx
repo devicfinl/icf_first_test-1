@@ -26,8 +26,6 @@ type Props = {
   onToggle?: () => void;
   onNavigate?: () => void;
   onSignOut: () => void;
-  /** Region, Division and Unit leaders get the Pravasi Vayana link. */
-  isLeader: boolean;
 };
 
 type MenuId = "meetings" | "pv" | "settings";
@@ -40,7 +38,7 @@ function menuFor(pathname: string): MenuId | null {
 }
 
 /** The sidebar menu: MAIN entries, the SETTINGS section and sign-out. Only one submenu is open at a time. */
-function Sidebar({ collapsed, onToggle, onNavigate, onSignOut, isLeader }: Props) {
+function Sidebar({ collapsed, onToggle, onNavigate, onSignOut }: Props) {
   const entry = { collapsed, onNavigate };
   const { pathname } = useLocation();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(() => menuFor(pathname));
@@ -86,7 +84,7 @@ function Sidebar({ collapsed, onToggle, onNavigate, onSignOut, isLeader }: Props
           <SidebarLink label="ICF Care" icon={HeartHandshake} showChevron {...entry} />
           <MeetingsSubmenu {...entry} {...submenu("meetings")} />
           <SidebarLink label="Siraj Subcriptions" icon={Newspaper} {...entry} />
-          <PravasiVayanaSubmenu isLeader={isLeader} {...entry} {...submenu("pv")} />
+          <PravasiVayanaSubmenu {...entry} {...submenu("pv")} />
           <SidebarLink label="Ayyuhananas" icon={BookMarked} {...entry} />
           <SidebarLink label="Perfomence Review" icon={Gauge} {...entry} />
           <SidebarLink label="Inbox" icon={Inbox} {...entry} />

@@ -48,6 +48,9 @@ export type NewRegistration = {
   cashReceived: "Y" | "N";
   /** Set when renewing an existing subscriber found with the lookup. */
   subscriberId?: number;
+  /** A new subscriber only. */
+  isIcfMember?: "Yes" | "No";
+  membershipId?: string;
 };
 
 export type CreatedRegistration = {
@@ -70,10 +73,15 @@ export type PvProgress = {
   renewable: number;
   /** Subscriptions with cash received. */
   paid: number;
+  /** Achieved per channel; old Print&Digital subscriptions count as print. */
+  print: number;
+  digital: number;
   membership: number;
   total_units: number;
-  /** The membership count. */
+  /** print + digital target from Set Target; 0 until it is set. */
   target: number;
+  target_print: number;
+  target_digital: number;
   /** subscriptions ÷ target; null when there is no target. */
   progress: number | null;
 };
@@ -158,6 +166,23 @@ export type SubscriberLookup = {
   /** The open campaign year; null while no campaign is open. */
   year: number | null;
   subscribers: ExistingSubscriber[];
+  /** More matched than are shown: narrow the search. */
+  more?: boolean;
+};
+
+/** GET /pv/members/lookup: an ICF member in the leader's branch, to fill a new subscriber's details. */
+export type IcfMember = {
+  membership_no: string;
+  name: string;
+  active: boolean;
+  mobile_country: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  unit: OrgPlace | null;
+  /** Below the leader's place, down to the member's unit: the form's dropdowns. */
+  path: OrgPlace[];
+  /** Already a subscriber: renew them instead. */
+  existing_subscriber: { subscriber_id: number; name: string } | null;
 };
 
 /** GET /pv/renewals: last year's subscribers, to renew in `year`. */
@@ -198,7 +223,9 @@ export type PublicRegistrationPage = {
 };
 
 /** POST /public/pv/registrations: the leader's form without cash received or renewal. */
-export type NewPublicRegistration = Omit<NewRegistration, "cashReceived" | "subscriberId"> & { rootId: number };
+export type NewPublicRegistration = Omit<NewRegistration, "cashReceived" | "subscriberId" | "isIcfMember" | "membershipId"> & {
+  rootId: number;
+};
 
 /** Where the subscription form loads its data from and saves to: the leader's API or a public link. */
 export type PvFormApi = {
@@ -267,3 +294,44 @@ export type SubscriberView = {
 
 /** PUT /pv/subscribers/{id}/subscriptions/{year}: the leader's form without renewal. */
 export type SubscriptionUpdate = Omit<NewRegistration, "subscriberId">;
+
+/** A print and a digital number, and their sum. */
+export type TargetPair = { print: number; digital: number; total: number };
+
+export type TargetStatus = "Not set" | "Draft" | "Set" | "Over-allocated";
+
+/** GET /pv/targets: a place's own target, what it has shared out, and the places directly below it. */
+export type PvTargets = {
+  place: OrgPlace;
+  path: OrgPlace[];
+  /** The leader's own place: drill-down never goes above it. */
+  top_id: number;
+  /** The open campaign year achieved is counted for; null at International (one per country). */
+  year: number | null;
+  own: (TargetPair & { status: "Active" | "Draft" }) | null;
+  allocated: TargetPair;
+  /** null until the place's own target is set. */
+  remaining: TargetPair | null;
+  achieved: TargetPair;
+  /** achieved ÷ target per channel; null without a target. */
+  progress: { print: number | null; digital: number | null };
+  /** International only: it sets its own target. */
+  can_edit_own: boolean;
+  can_allocate: boolean;
+  /** Why the leader cannot share out their target yet. */
+  blocked_reason: string | null;
+  children: (OrgPlace & {
+    target: TargetPair | null;
+    status: TargetStatus;
+    achieved: TargetPair;
+    progress: { print: number | null; digital: number | null };
+    has_children: boolean;
+  })[];
+};
+
+/** PUT /pv/targets. */
+export type TargetsSave = {
+  status: "Active" | "Draft";
+  own?: { print: number; digital: number };
+  children: { org_id: number; print: number; digital: number }[];
+};

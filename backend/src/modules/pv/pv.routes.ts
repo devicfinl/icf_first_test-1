@@ -7,6 +7,7 @@ import {
   listPublicRegistrations,
   listRegistrations,
   listRenewals,
+  lookupMember,
   lookupSubscribers,
   publicChildren,
   publicContext,
@@ -18,6 +19,8 @@ import {
   subscriberDetails,
   updateSubscription,
 } from "./pv.controller.js";
+import { analysisPlaces, analysisSubscriptions, analysisSummary } from "./pv-analysis.controller.js";
+import { saveTargets, targetsView } from "./pv-targets.controller.js";
 import { publicFormRateLimit } from "../../middlewares/rate-limit.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
 
@@ -30,7 +33,13 @@ pvRouter.get("/registration/price", requireAuth, registrationPrice);
 pvRouter.post("/registrations", requireAuth, createRegistration);
 pvRouter.get("/registrations", requireAuth, listRegistrations);
 pvRouter.get("/analytics", requireAuth, registrationAnalytics);
+pvRouter.get("/targets", requireAuth, targetsView);
+pvRouter.get("/analysis/summary", requireAuth, analysisSummary);
+pvRouter.get("/analysis/subscriptions", requireAuth, analysisSubscriptions);
+pvRouter.get("/analysis/places", requireAuth, analysisPlaces);
+pvRouter.put("/targets", requireAuth, saveTargets);
 pvRouter.get("/subscribers/lookup", requireAuth, lookupSubscribers);
+pvRouter.get("/members/lookup", requireAuth, lookupMember);
 pvRouter.get("/renewals", requireAuth, listRenewals);
 pvRouter.get(
   "/public-registrations",

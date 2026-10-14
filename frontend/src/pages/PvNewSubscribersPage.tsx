@@ -4,94 +4,97 @@ import { Plus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import AddSubscriberDrawer from "../components/pv/AddSubscriberDrawer";
-import NewRegistrationsTable from "../components/pv/NewRegistrationsTable";
 import YearSelect from "../components/pv/YearSelect";
+import HierarchyFilter from "../components/pv/analysis/HierarchyFilter";
+import SubscriptionsTable from "../components/pv/analysis/SubscriptionsTable";
+import SummaryCards from "../components/pv/analysis/SummaryCards";
 import { apiErrorMessage } from "../api/axios";
-import { fetchRegistrations } from "../api/pv";
-import type { RegistrationPage } from "../types/pv";
-
-const PAGE_SIZE = 10;
+import { fetchAnalysisSummary } from "../api/pv";
+import { useAnalysisParams } from "../hooks/useAnalysisParams";
+import type { AnalysisSummary } from "../types/pvAnalysis";
 
 /**
- * Pravasi Vayana → New Subscriber: the approved new subscribers in the leader's branch. Add New
- * opens the subscriber form in a drawer; saving refreshes the list.
+ * Pravasi Vayana → Subscribers: this year's subscriptions in the leader's branch, in the same
+ * table as Analytics → All, narrowed by place one level at a time (all by default). The year,
+ * place, sort and page are kept in the URL. Add New opens the subscriber form in a drawer.
  */
 function PvNewSubscribersPage() {
-  // undefined: the latest year that has subscriptions (the server picks it).
-  const [year, setYear] = useState<number | undefined>(undefined);
-  const [page, setPage] = useState(1);
-  // Bumped after a save, to load the list again.
+  const { filters, sort, dir, page, pageSize, update } = useAnalysisParams();
+  // Bumped after a save, to load the cards and the list again.
   const [refreshKey, setRefreshKey] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [summary, setSummary] = useState<{ key: string; data?: AnalysisSummary; error?: string } | null>(null);
 
-  const [registrations, setRegistrations] = useState<RegistrationPage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // The list is loading until the request for the current year/page/refresh has finished.
-  const listKey = `${year}:${page}:${refreshKey}`;
-  const [loadedListKey, setLoadedListKey] = useState<string | null>(null);
-  const listLoading = loadedListKey !== listKey;
-
+  const key = `${JSON.stringify(filters)}:${refreshKey}`;
   useEffect(() => {
     let current = true;
-    fetchRegistrations({ year, page, pageSize: PAGE_SIZE })
-      .then((loaded) => {
-        if (!current) return;
-        setRegistrations(loaded);
-        setError(null);
-      })
-      .catch((failure) => current && setError(apiErrorMessage(failure, "Could not load the subscribers.")))
-      .finally(() => current && setLoadedListKey(listKey));
+    fetchAnalysisSummary(filters)
+      .then((data) => current && setSummary({ key, data }))
+      .catch((failure) => current && setSummary({ key, error: apiErrorMessage(failure, "Could not load the subscribers.") }));
     return () => {
       current = false;
     };
-  }, [year, page, refreshKey, listKey]);
+    // `key` covers the filters and refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-  function chooseYear(value: number) {
-    setYear(value);
-    setPage(1);
-  }
+  const shown = summary?.key === key ? summary : null;
+  // Kept while the next one loads, so the dropdowns and year do not jump.
+  const data = shown?.data ?? summary?.data;
+  const scope = data?.scope;
+  // The chosen places below the leader's own (the path runs from the country down).
+  const below = scope ? scope.path.slice(scope.path.findIndex((place) => place.id === scope.top_id) + 1) : [];
 
   function onSaved() {
-    setPage(1);
-    setRefreshKey((key) => key + 1);
+    update({ page: undefined });
+    setRefreshKey((value) => value + 1);
   }
 
   return (
     <main className="space-y-5">
+      <section className="space-y-4 rounded-2xl bg-white px-4 py-5 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold text-navy">Subscribers</h1>
+            <p className="text-[16px] text-[#6b6b6b]">
+              {data?.year ? `Subscribers ${data.year}` : "Subscribers for the current year"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <YearSelect years={data?.years ?? []} value={data?.year ?? null} onChange={(year) => update({ year })} />
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="New subscriber"
+              title="New subscriber"
+              className=" flex column-flex place-items-center  bg-clay p-2 rounded-sm text-white shadow-md transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-navy/40 focus-visible:outline-none motion-reduce:transform-none"
+            >
+              <Plus className="size-5" /> Add New
+            </button>
+          </div>
+        </div>
 
-      {error && (
+        {/* A Unit leader has no places below, so no dropdowns show. */}
+        {scope && <HierarchyFilter rootId={scope.top_id} path={below} onChange={(orgId) => update({ org_id: orgId })} />}
+      </section>
+
+      {shown?.error && (
         <Alert variant="destructive" className="rounded-xl">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{shown.error}</AlertDescription>
         </Alert>
       )}
 
-      {/* One card: the title row and the table together. */}
-      <NewRegistrationsTable
-        data={registrations}
-        loading={listLoading}
-        onPageChange={setPage}
-        header={
-          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
-            <div className="min-w-0">
-              <h1 className="text-[22px] font-semibold text-navy">New Subscribers</h1>
-              <p className="text-[16px] text-[#6b6b6b]">
-                {registrations?.year ? `Subscribers ${registrations.year}` : "Subscribers for the current year"}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <YearSelect years={registrations?.years ?? []} value={registrations?.year ?? null} onChange={chooseYear} />
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="New subscriber"
-                title="New subscriber"
-                className=" flex column-flex place-items-center  bg-clay p-2 rounded-sm text-white shadow-md transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-navy/40 focus-visible:outline-none motion-reduce:transform-none"
-              >
-                <Plus className="size-5" /> Add New
-              </button>
-            </div>
-          </div>
-        }
+      {data && <SummaryCards summary={data} />}
+
+      <SubscriptionsTable
+        key={refreshKey}
+        tab="all"
+        filters={filters}
+        sort={sort}
+        dir={dir}
+        page={page}
+        pageSize={pageSize}
+        onChange={update}
       />
 
       <AddSubscriberDrawer open={drawerOpen} onOpenChange={setDrawerOpen} onSaved={onSaved} />

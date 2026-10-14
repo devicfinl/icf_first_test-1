@@ -5,13 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev:local": "tsx watch --env-file-if-exists=.env --env-file=.env.local src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --experimental-test-module-mocks --test 'src/**/*.test.ts'",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
-  },
+    "db:studio": "prisma studio",
+    "db:migrate:pv-targets": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-create-new-table.sql vayana_subscription_entity",
+    "db:migrate:pv-campaigns": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-add-campaign.sql vayana_subscription_entity_new",
+    "db:migrate:pv-targets:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-targets.mjs pv-targets-create-new-table.sql vayana_subscription_entity",
+    "db:migrate:pv-campaigns:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-targets.mjs pv-targets-add-campaign.sql vayana_subscription_entity_new"
+      },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.10.0",
     "@prisma/client": "^7.10.0",

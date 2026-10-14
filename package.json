@@ -6,7 +6,9 @@
   "scripts": {
     "setup": "npm install --prefix backend && npm install --prefix frontend",
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:local": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend:local\" \"npm:dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
+    "dev:backend:local": "npm --prefix backend run dev:local",
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "start": "npm --prefix backend run start",

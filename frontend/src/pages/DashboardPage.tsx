@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { BarChart3, ChevronRight, KeyRound, RefreshCw, Share2, UserPlus, UserRound, type LucideIcon } from "lucide-react";
 
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
-import { isLeaderLevel, roleLabel } from "../lib/organisation";
+import { roleLabel } from "../lib/organisation";
 import type { RootState } from "../store/store";
 
 type Shortcut = { label: string; hint: string; to: string; icon: LucideIcon };
@@ -61,16 +61,14 @@ function DashboardPage() {
         )}
       </section>
 
-      {isLeaderLevel(position?.organisation.level) && (
-        <section>
-          <h2 className="mb-3 px-1 text-[13px] font-semibold tracking-wide text-[#6b6b6b] uppercase">Pravasi Vayana</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {PV_SHORTCUTS.map((shortcut) => (
-              <ShortcutCard key={shortcut.to} shortcut={shortcut} />
-            ))}
-          </div>
-        </section>
-      )}
+      <section>
+        <h2 className="mb-3 px-1 text-[13px] font-semibold tracking-wide text-[#6b6b6b] uppercase">Pravasi Vayana</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {PV_SHORTCUTS.map((shortcut) => (
+            <ShortcutCard key={shortcut.to} shortcut={shortcut} />
+          ))}
+        </div>
+      </section>
 
       <section>
         <h2 className="mb-3 px-1 text-[13px] font-semibold tracking-wide text-[#6b6b6b] uppercase">Account</h2>

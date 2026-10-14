@@ -8,6 +8,9 @@ import type { OrgPlace } from "../../types/pv";
 
 // What a visitor chooses below each kind of leader's place.
 const CHOICES: Record<string, string> = {
+  International: "their country, then the places below it down to the unit",
+  National: "their region (or chapter), then the places below it down to the unit",
+  Chapter: "their region, division and unit",
   Region: "their division and unit",
   Division: "their unit",
   Unit: "nothing: the unit is already set",

@@ -77,7 +77,8 @@ what happens next:
 - **one position** — it is applied to the token straight away, `requires_position_selection` is false
 - **several** — `position` is null and the member must call `select-position` before the session has
   a committee context
-- **none** — they sign in with no committee context at all
+- **none** — sign-in is refused with 403 "Only members holding a cabinet committee position can
+  sign in." (checked after the password, so it reveals nothing to someone guessing)
 
 A wrong username and a wrong password give the same answer, so the endpoint cannot be used to find
 out which membership numbers have accounts. Ten failures against one account locks it for 15
@@ -303,12 +304,27 @@ when their latest subscription is outside the leader's branch (403), when they a
 the open year (400), or when the subscriber does not exist (400). The 201 answer has
 `"registration_type": "RENEW"`.
 
-### `GET /api/pv/subscribers/lookup?q=`
+### `GET /api/pv/members/lookup?membership_no=`
 
-The "Is Existing Subscriber" search. `q` is a subscriber number (`subscriber_id`), a ledger number
-(the placeholder `PV100000` is ignored) or a mobile number (digits; with or without the country code
-and leading zeros). Only subscribers whose latest subscription is in the leader's branch are
-returned, at most 20. `year` is the open campaign year (null while none is open). `previous.path`
+For a new subscriber who is an ICF member: their membership record (`OM0001234`, any case), to fill
+the form. `name`, `mobile_country`, `mobile`, `whatsapp`, `active`, `unit` and `path` (the dropdown
+choices below the leader's place down to the member's unit). `existing_subscriber` is set when a
+subscriber already has that membership number, so they can be renewed instead. 400 for a malformed
+number, 404 when no member has it, 403 when the member's unit is outside the leader's branch.
+
+`POST /api/pv/registrations` takes `isIcfMember` (`Yes` | `No`) and, with `Yes`, `membershipId`;
+both are saved on the subscriber (`is_icf_member`, `membership_id`). An unknown membership number
+is a 400; a member whose unit is outside the leader's branch is a 403, as in the lookup.
+
+### `GET /api/pv/subscribers/lookup?q=&org_id=`
+
+The "Is Existing Subscriber" search. `q` matches a subscriber number (`subscriber_id`), a mobile
+number (digits; with or without the country code and leading zeros), or text in the name, PV ledger
+number or address (shop, building, street, area, province); the placeholder ledger `PV100000` never
+matches. `org_id` keeps the search to one place in the leader's branch (a division, unit, ...);
+with `org_id` alone, that place's subscribers are listed. One of the two is required (400), and text
+needs 2 characters. Only subscribers whose latest subscription is in that place (or, without
+`org_id`, the leader's branch) are returned, at most 20; `more` is true when there were more. `year` is the open campaign year (null while none is open). `previous.path`
 is the organisation dropdown choices below the leader's place down to the unit (empty for a Unit
 leader), so the form can set Division and Unit too.
 
@@ -352,9 +368,11 @@ to 10 (max 100). `years` lists every year with subscriptions, latest first.
 ### `GET /api/pv/analytics?year=&org_id=`
 
 Work progress for one year. Without `org_id`, the leader's own place; with it, a place below it
-(drill-down; 403 above or beside). Only approved subscriptions count. Target is the membership count
-(active `membership_master` rows in the place's units); `progress` = subscriptions ÷ target, `null`
-without a target. `renewable` = last year's approved subscribers; `paid` = cash received.
+(drill-down; 403 above or beside). Only approved subscriptions count. `target` is the place's
+print + digital target from Set Target (`target_print`, `target_digital`; 0 until it is given, a
+draft does not count except International's own); `progress` = subscriptions ÷ target, `null`
+without a target. `print` / `digital` are achieved per channel (old `Print&Digital` counts as
+print). `membership` is the active members in the place's units. `renewable` = last year's approved subscribers; `paid` = cash received.
 `places` has one entry per place directly below (empty for a unit). `scope.top_id` is the leader's
 place: the report cannot go above it.
 
@@ -363,12 +381,72 @@ place: the report cannot go above it.
   "year": 2027, "years": [2027, 2026],
   "scope": { "place": { "id": 70, "name": "Bousher", "level": "Division" }, "path": [ … ], "top_id": 70 },
   "totals": { "subscriptions": 811, "new": 495, "renewals": 316, "renewable": 420, "paid": 700,
-              "membership": 1248, "total_units": 12, "target": 1248, "progress": 0.6498 },
+              "print": 500, "digital": 311, "membership": 1248, "total_units": 12,
+              "target": 1000, "target_print": 400, "target_digital": 600, "progress": 0.811 },
   "by_mode": { "Print": 300, "Digital": 311, "Print&Digital": 200 },
   "amounts": [{ "currency": "OMR", "total": 3600.5, "received": 3100 }],
   "places": [{ "id": 805, "name": "Ghubra East", "level": "Unit", "subscriptions": 311, "target": 548, "progress": 0.5675, … }]
 }
 ```
+
+### Campaign analysis: `GET /api/pv/analysis/summary`, `/subscriptions`, `/places`
+
+Shared filters (all optional): `year` (default: the place's open campaign year, else the latest),
+`org_id` (a place in the leader's branch), `range` (`today`, `yesterday`, `1h`, `8h`, `24h`, `7d`,
+`30d`, `campaign` (default, no time limit), `custom` with `from` / `to` as `YYYY-MM-DD`),
+`category` (`all` | `new` | `renew`), `payment` (`all` | `paid` | `unpaid`; paid is
+`cash_received = 'Y'`), `member` (`all` | `yes` | `no`, from `is_icf_member`), `status`
+(`approved` (default) | `pending` | `rejected` | `all`), `search` (name, mobile, ledger number or
+subscriber number). Time ranges use the database server's clock on `created_at`.
+
+- `summary`: `totals` (subscriptions, new, renewals, paid, unpaid) and `amounts` per currency
+  (total, received, pending).
+- `subscriptions`: adds `tab` (`all` | `new` | `old`), `sort` (`created_at`, `updated_at`, `name`,
+  `amount`, `mode`, `category`), `dir`, `page`, `page_size` (25, 50, 100), and `export=1` for every
+  matching row (up to 10,000). `old` lists the year before's subscriptions, each with `renewed`.
+  Rows carry `unit` and `under` (the places between the report's place and the unit).
+- `places`: each place directly below, with subscriptions, new, renewals, `target` (print +
+  digital from the targets table) and `achieved`, `rank`, paid / unpaid / `paid_rate` and
+  `amounts`, `units` / `active_units` / `participation`, and `last_year` / `growth` /
+  `growth_rate` (the whole campaign: the time range is not applied to last year).
+
+### `GET /api/pv/targets?org_id=`
+
+Targets from `vayana_subscription_entity_new`: each place gets a print and a digital target from
+the place directly above it (International sets its own). Without `org_id`, the leader's own place;
+a place below it is view-only; outside the leader's branch is a 403. Only rows with
+`campaign_status` `Active` or `Draft` count, the latest (highest `id`) per place. A `Draft` is not
+shown to the place it is for. `achieved` counts approved subscriptions of the open campaign year
+of the place's country (`year` is null at International, where each country has its own);
+old `Print&Digital` rows count as print.
+
+```json
+{ "place": { "id": 2, "name": "Oman", "level": "National" }, "path": [...], "top_id": 2, "year": 2027,
+  "own": { "print": 100, "digital": 150, "total": 250, "status": "Active" },
+  "allocated": { "print": 50, "digital": 70, "total": 120 },
+  "remaining": { "print": 50, "digital": 80, "total": 130 },
+  "achieved": { "print": 2, "digital": 1, "total": 3 },
+  "progress": { "print": 0.02, "digital": 0.0067 },
+  "can_edit_own": false, "can_allocate": true, "blocked_reason": null,
+  "children": [{ "id": 60, "name": "Muscat", "level": "Region",
+                 "target": { "print": 40, "digital": 60, "total": 100 },
+                 "status": "Over-allocated", "achieved": { "print": 2, "digital": 1, "total": 3 },
+                 "progress": { "print": 0.05, "digital": 0.0167 }, "has_children": true }] }
+```
+
+`status` per child: `Not set`, `Draft`, `Set`, or `Over-allocated` (it gave the places below it
+more than its own target in either channel). `can_allocate` is false until the leader's own
+target is `Active`; `blocked_reason` says why.
+
+### `PUT /api/pv/targets`
+
+`{ "status": "Active" | "Draft", "own"?: { "print", "digital" }, "children": [{ "org_id", "print", "digital" }] }`
+
+Whole numbers, 0 or more. `children` must be places directly below the leader's own (else 403);
+places left out keep their target. `own` is for International only (else 403). 400 when the
+leader's own target is not set yet, when the print or digital targets below (sent and kept
+together) would add up to more than the leader's own, or for `Draft` on a place whose target is
+already `Active`. Checked and written in one transaction with the rows locked.
 
 ### `GET /api/pv/renewals?status=&search=&page=&page_size=`
 

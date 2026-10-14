@@ -11,6 +11,8 @@ import type { AddSubscriberFormData, AddSubscriberFormInput } from "../utilities
 export const EMPTY_SUBSCRIBER_FORM: AddSubscriberFormInput = {
   isExisting: "N",
   subscriberId: undefined,
+  isIcfMember: "",
+  membershipId: "",
   unitId: undefined as unknown as number,
   name: "",
   shopName: "",
@@ -65,13 +67,16 @@ export function toRegistrationRequest(data: AddSubscriberFormData): NewRegistrat
     deliveryResponsibility: includesPrint(data.subscriptionMode) ? optional(data.deliveryResponsibility) : undefined,
     cashReceived: data.cashReceived,
     subscriberId: data.isExisting === "Y" ? data.subscriberId : undefined,
+    // Asked only of a new subscriber.
+    isIcfMember: data.isExisting === "N" && data.isIcfMember ? data.isIcfMember : undefined,
+    membershipId: data.isExisting === "N" && data.isIcfMember === "Yes" ? data.membershipId : undefined,
   };
 }
 
 /** Form values -> public request body: no cash received or renewal; rootId is the link's place. */
 export function toPublicRequest(data: AddSubscriberFormData, rootId: number): NewPublicRegistration {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { cashReceived, subscriberId, ...rest } = toRegistrationRequest(data);
+  const { cashReceived, subscriberId, isIcfMember, membershipId, ...rest } = toRegistrationRequest(data);
   return { ...rest, rootId };
 }
 

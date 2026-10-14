@@ -19,6 +19,8 @@ const ORGS: Org[] = [
   { orgid: 81, name: "Bousher Unit B", level: "Unit", hparent: 70, countryCode: "om" },
   { orgid: 61, name: "Sohar", level: "Region", hparent: 2, countryCode: "OM" },
   { orgid: 82, name: "Sohar Unit", level: "Unit", hparent: 61, countryCode: "OM" },
+  // A unit that leaves country_code blank: its country comes from the places above it.
+  { orgid: 84, name: "Sohar Unit B", level: "Unit", hparent: 61, countryCode: "" },
   { orgid: 3, name: "Saudi", level: "National", hparent: 1, countryCode: "SA" },
   { orgid: 30, name: "Riyadh Chapter", level: "Chapter", hparent: 3, countryCode: "SA" },
   { orgid: 62, name: "Riyadh Region", level: "Region", hparent: 30, countryCode: "SA" },
@@ -73,7 +75,18 @@ const MEMBERS: Record<number, number> = { 80: 10, 81: 6, 82: 4 };
 
 // Answers the controller's raw queries from SUBS. The values are the IN-list ids, then the year,
 // then (for a page) LIMIT and OFFSET, in the order the placeholders appear.
+// Set Target rows (vayana_subscription_entity_new): Muscat gave Bousher 4 print and 6 digital;
+// Bousher gave Unit A 3 and 2, and has a draft for Unit B (not given yet, so not counted).
+const TARGET_ROWS = [
+  { id: 1, setByOrg: 60, setToOrg: 70, targetPrint: 4, targetDigital: 6, campaign_status: "Active" },
+  { id: 2, setByOrg: 70, setToOrg: 80, targetPrint: 3, targetDigital: 2, campaign_status: "Active" },
+  { id: 3, setByOrg: 70, setToOrg: 81, targetPrint: 5, targetDigital: 5, campaign_status: "Draft" },
+];
+
 function fakeQueryRaw(sql: string, ...values: any[]) {
+  if (sql.includes("FROM vayana_subscription_entity_new")) {
+    return TARGET_ROWS.filter((row) => values.includes(row.setToOrg));
+  }
   // One subscriber's subscriptions, rejected included (view and edit): (subscriber_id).
   if (sql.includes("WHERE subscriber_id = ?\n     ORDER BY")) {
     return SUBS.filter((row) => row.subscriber_id === values[0])
@@ -97,6 +110,20 @@ function fakeQueryRaw(sql: string, ...values: any[]) {
   if (sql.includes("d.approval_status = 'PENDING' AND d.subscription_year = ?")) {
     const [, country, mobile] = values;
     return [{ total: BigInt(masters.filter((m: any) => m.status === "PENDING" && m.mobileCountry === country && m.mobile === mobile).length) }];
+  }
+
+  // Lookup by name, ledger or address: (place ids, then the search values, if any).
+  if (sql.includes("AS latest")) {
+    const idCount = sql.match(/IN \(([^)]*)\)/)![1]!.split(",").length;
+    const places = values.slice(0, idCount);
+    const term = values[idCount] ? String(values[idCount]).replace(/%/g, "").toLowerCase() : "";
+    const ids = new Set(
+      SUBS.filter((row) => places.includes(row.unit_id) && row.status !== "REJECTED")
+        .filter((row) => !term || [row.name, (masters.find((m) => m.subscriberId === row.subscriber_id)?.ledgerNo ?? "").replace("PV100000", ""), "Old Tower", "Muscat"]
+          .some((text) => text.toLowerCase().includes(term)))
+        .map((row) => row.subscriber_id),
+    );
+    return [...ids].map((subscriber_id) => ({ subscriber_id }));
   }
 
   const idCount = sql.match(/IN \(([^)]*)\)/)![1]!.split(",").length;
@@ -190,6 +217,11 @@ const masters: MasterRow[] = [
   { subscriberId: 8, name: "Rae", mobileCountry: "968", mobile: "95550008", status: "PENDING" },
   { subscriberId: 9, name: "Sam", mobileCountry: "968", mobile: "95550009", status: "PENDING" },
 ];
+// ICF members for the membership-number lookup: Nasser is in Bousher Unit B, Faisal in Sohar.
+const ICF_MEMBERS = [
+  { mid: 50, membershipNo: "OM0001234", memberName: "Nasser Ali ", mobileCountry: "+968", mobile: "0091234567", whatsappNo: "96891234567", unitId: 81, active: 1 },
+  { mid: 51, membershipNo: "OM0009999", memberName: "Faisal", mobileCountry: "968", mobile: "92222222", whatsappNo: "", unitId: 82, active: 1 },
+];
 const detailInserts: unknown[][] = [];
 const updates: unknown[][] = [];
 let nextSubscriberId = 1000;
@@ -214,7 +246,9 @@ const fakePrisma: any = {
   organisationUnit: {
     findUnique: async ({ where }: any) => {
       const org = orgById.get(where.orgid);
-      return org ? { countryCode: org.countryCode } : null;
+      return org
+        ? { countryCode: org.countryCode, hparent: org.hparent, hlevel: org.level === "International" ? 1 : 8 }
+        : null;
     },
     // where.hparent is one id (dropdowns) or { in: [...] } (walking a leader's branch).
     findMany: async ({ where }: any) => {
@@ -229,6 +263,7 @@ const fakePrisma: any = {
     findMany: async ({ where }: any) => PRICES.filter((price) => price.country === where.country),
   },
   pvSubscriptionMaster: {
+    findFirst: async ({ where }: any) => masters.find((row: any) => row.membershipId === where.membershipId) ?? null,
     findUnique: async ({ where }: any) => masters.find((row) => row.subscriberId === where.subscriberId) ?? null,
     findMany: async ({ where }: any) =>
       masters.filter((row) =>
@@ -252,7 +287,8 @@ const fakePrisma: any = {
   membershipMaster: {
     findFirst: async ({ where }: any) => {
       const person = people.find((p) => p.memberNo === where.membershipNo);
-      return person ? { mid: person.mid } : null;
+      if (person) return { mid: person.mid };
+      return ICF_MEMBERS.find((member) => member.membershipNo === where.membershipNo) ?? null;
     },
     groupBy: async ({ where }: any) =>
       where.unitId.in.filter((id: number) => MEMBERS[id]).map((id: number) => ({ unitId: id, _count: { _all: MEMBERS[id] } })),
@@ -325,7 +361,8 @@ function authFor(person: Person, overrides: Partial<Auth> = {}): Auth {
 
 // Runs a handler as the routes would (validated query in req.validated) and returns the response.
 async function call(handler: Handler, auth: Auth, { query, body }: { query?: object; body?: object } = {}) {
-  const req = makeReq({ auth, body });
+  // Handlers validate req.query themselves (express-validator); req.validated is kept for older ones.
+  const req = makeReq({ auth, body, query: query ? Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)])) : {} });
   (req as any).validated = { query };
   const res = makeRes();
   await handler(req, res);
@@ -377,11 +414,20 @@ test("context: a Unit leader's unit is fixed", async () => {
   assert.equal(res.body.data.leader.id, 80);
 });
 
-test("only cabinet positions at Region, Division or Unit level are leaders", async () => {
-  for (const person of [PEOPLE.notCabinet!, PEOPLE.chapterLeader!, PEOPLE.nationalLeader!]) {
-    const res = await call(controller.registrationContext, authFor(person));
-    assert.equal(res.statusCode, 403, `expected 403 for cmid ${person.cmid}`);
-  }
+test("a non-cabinet position is refused", async () => {
+  const res = await call(controller.registrationContext, authFor(PEOPLE.notCabinet!));
+  assert.equal(res.statusCode, 403);
+});
+
+test("cabinet leaders at any level can add subscribers, choosing places below their own", async () => {
+  const chapter = await call(controller.registrationContext, authFor(PEOPLE.chapterLeader!));
+  assert.equal(chapter.statusCode, 200);
+  assert.equal(chapter.body.data.leader.level, "Chapter");
+  assert.equal(chapter.body.data.choose_unit, true);
+
+  const national = await call(controller.registrationContext, authFor(PEOPLE.nationalLeader!));
+  assert.equal(national.statusCode, 200);
+  assert.equal(national.body.data.leader.name, "Oman");
 });
 
 test("a session with no position, or another member's position, is refused", async () => {
@@ -536,15 +582,23 @@ test("analytics: work progress for the leader's place, approved subscriptions on
   assert.deepEqual(data.years, [2027, 2026]);
   assert.equal(data.scope.place.name, "Bousher");
   // Pending public registrations and the rejected one do not count; Sohar (82) is outside.
+  // The target is Set Target's print + digital; Print&Digital counts as print.
   assert.deepEqual(data.totals, {
-    subscriptions: 3, new: 2, renewals: 1, renewable: 1, paid: 2,
-    membership: 16, total_units: 2, target: 16, progress: 3 / 16,
+    subscriptions: 3, new: 2, renewals: 1, renewable: 1, paid: 2, print: 2, digital: 1,
+    membership: 16, total_units: 2, target: 10, target_print: 4, target_digital: 6, progress: 3 / 10,
   });
   assert.deepEqual(data.by_mode, { Print: 1, Digital: 1, "Print&Digital": 1 });
   assert.deepEqual(data.amounts, [{ currency: "OMR", total: 14.5, received: 9.5 }]);
+  // Unit B's target is still a draft, so it has none yet.
   assert.deepEqual(
-    data.places.map((place: any) => [place.name, place.subscriptions, place.target, place.renewable]),
-    [["Bousher Unit A", 1, 10, 1], ["Bousher Unit B", 2, 6, 0]],
+    data.places.map((place: any) => [
+      place.name, place.subscriptions, place.print, place.digital, place.paid,
+      place.target, place.target_print, place.target_digital, place.progress, place.renewable,
+    ]),
+    [
+      ["Bousher Unit A", 1, 0, 1, 1, 5, 3, 2, 1 / 5, 1],
+      ["Bousher Unit B", 2, 2, 0, 1, 0, 0, 0, null, 0],
+    ],
   );
 });
 
@@ -642,6 +696,68 @@ test("lookup: the placeholder ledger and subscribers outside the leader's branch
   assert.deepEqual(await lookupNames(PEOPLE.divisionLeader!, "PV100000"), []);
   assert.deepEqual(await lookupNames(PEOPLE.divisionLeader!, "5"), []);
   assert.deepEqual(await lookupNames(PEOPLE.regionLeader!, "5"), []);
+});
+
+test("lookup: by name, and everyone in a chosen place without a search", async () => {
+  const leader = PEOPLE.divisionLeader!;
+  assert.deepEqual(await lookupNames(leader, "lai"), ["Laila"]);
+
+  const inUnit = await call(controller.lookupSubscribers, authFor(leader), { query: { org_id: 81 } });
+  assert.equal(inUnit.statusCode, 200);
+  // Hind subscribes in Unit B too, but has no subscriber record in this fixture.
+  assert.deepEqual(inUnit.body.data.subscribers.map((row: any) => row.name).sort(), ["Badr", "Pat"]);
+  assert.equal(inUnit.body.data.more, false);
+
+  assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: {} })).statusCode, 400);
+  assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { q: "a" } })).statusCode, 400);
+  assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { org_id: 61 } })).statusCode, 403);
+});
+
+test("member lookup: an ICF member in the branch fills the form; others are refused", async () => {
+  const leader = PEOPLE.divisionLeader!;
+  const find = (no: string) => call(controller.lookupMember, authFor(leader), { query: { membership_no: no } });
+
+  const res = await find("om0001234");
+  assert.equal(res.statusCode, 200, res.body.message);
+  const data = res.body.data;
+  assert.deepEqual(
+    [data.membership_no, data.name, data.mobile_country, data.mobile, data.whatsapp, data.unit.name, data.existing_subscriber],
+    ["OM0001234", "Nasser Ali", "968", "91234567", "91234567", "Bousher Unit B", null],
+  );
+  assert.deepEqual(data.path.map((place: any) => place.id), [81]);
+
+  assert.equal((await find("OM0009999")).statusCode, 403);
+  assert.equal((await find("OM0000000")).statusCode, 404);
+  assert.equal((await find("12345")).statusCode, 400);
+});
+
+test("create: an ICF member's number is saved; unknown numbers and members outside the branch are refused", async () => {
+  const leader = PEOPLE.divisionLeader!;
+  const refused = await create(leader, validBody({ mobile: "95551111", isIcfMember: "Yes", membershipId: "OM0000000" }));
+  assert.equal(refused.statusCode, 400);
+  assert.equal(refused.body.message, "No ICF member has that membership number.");
+
+  // Faisal is a member in Sohar, outside the Division leader's branch.
+  const outside = await create(leader, validBody({ mobile: "95552222", isIcfMember: "Yes", membershipId: "OM0009999" }));
+  assert.equal(outside.statusCode, 403);
+  assert.equal(outside.body.message, "That member belongs to a unit outside your position.");
+
+  const res = await create(leader, validBody({ name: "Nasser Ali", mobile: "91234567", isIcfMember: "Yes", membershipId: "om0001234" }));
+  assert.equal(res.statusCode, 201, res.body.message);
+  const saved: any = masters.find((row) => row.subscriberId === res.body.data.subscriber_id);
+  assert.deepEqual([saved.isIcfMember, saved.membershipId], ["Yes", "OM0001234"]);
+
+  // Already a subscriber now: the member lookup says so.
+  const again = await call(controller.lookupMember, authFor(leader), { query: { membership_no: "OM0001234" } });
+  assert.equal(again.body.data.existing_subscriber.subscriber_id, res.body.data.subscriber_id);
+});
+
+test("validation: Yes to ICF member needs a membership number", async () => {
+  assert.equal(
+    await validateBody(validBody({ isIcfMember: "Yes", membershipId: "OM12" })),
+    "Please enter a valid membership number, e.g. OM0001234.",
+  );
+  assert.equal(await validateBody(validBody({ isIcfMember: "No" })), null);
 });
 
 test("renew: saved as RENEW for the open year, with the master's contact details updated", async () => {
@@ -900,4 +1016,15 @@ test("edit: type, method, status, year and amount cannot be sent", () => {
   for (const extra of [{ amount: 1 }, { subscriptionYear: 2026 }, { approvalStatus: "APPROVED" }, { subscriberId: 3 }]) {
     assert.throws(() => controller.subscriptionUpdateBody.parse(validBody(extra)));
   }
+});
+
+test("price: a unit with a blank country code uses the country of the places above it", async () => {
+  const res = await call(controller.registrationPrice, authFor(PEOPLE.nationalLeader!), { query: { unit_id: 84 } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.data.currency, "OMR");
+});
+
+test("price: a closed campaign names the country and years", async () => {
+  const res = await call(controller.registrationPrice, authFor(PEOPLE.saudiUnitLeader!), { query: { unit_id: 83 } });
+  assert.match(res.body.message, /SA/);
 });

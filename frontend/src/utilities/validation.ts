@@ -47,10 +47,14 @@ const pvOptional = (label: string) =>
 
 export const addSubscriberSchema = z
   .object({
-    // Step 1
+    // Find step
     // Y: renewing the existing subscriber chosen with the lookup (subscriberId).
     isExisting: z.enum(["Y", "N"]),
     subscriberId: z.number().int().positive().optional(),
+    // Asked of a new subscriber (leader's form only); Yes needs the membership number.
+    isIcfMember: z.enum(["", "Yes", "No"]),
+    membershipId: z.string().trim().toUpperCase(),
+    // Details step
     unitId: z.number({ error: "Please choose a unit." }).int().positive("Please choose a unit."),
     name: pvRequired("the full name"),
     shopName: pvOptional("the flat/villa/shop name"),
@@ -88,15 +92,20 @@ export const addSubscriberSchema = z
   .refine((data) => !(data.whatsapp && !data.whatsappCountry), {
     message: "Please enter the WhatsApp country code.",
     path: ["whatsappCountry"],
+  })
+  .refine((data) => data.isIcfMember !== "Yes" || USERNAME_PATTERN.test(data.membershipId), {
+    message: "Please enter a valid membership number, e.g. OM0001234.",
+    path: ["membershipId"],
   });
 export type AddSubscriberFormInput = z.input<typeof addSubscriberSchema>;
 export type AddSubscriberFormData = z.output<typeof addSubscriberSchema>;
 
-/** The fields on step 1, validated before moving on to step 2. */
+/** The leader's first step: is this an existing subscriber, or an ICF member. */
+export const ADD_SUBSCRIBER_FIND_FIELDS = ["isExisting", "subscriberId", "isIcfMember", "membershipId"] as const;
+
+/** The details step, validated before moving on to the subscription. */
 export const ADD_SUBSCRIBER_STEP1_FIELDS = [
   "unitId",
-  "isExisting",
-  "subscriberId",
   "name",
   "shopName",
   "floorNo",

@@ -1,61 +1,135 @@
 import { useEffect, useState } from "react";
+import { SlidersHorizontal, Target } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import Loader from "../components/loading-ui/Loader";
+import FormPanel from "../components/layout/FormPanel";
 
 import AnalyticsBreakdown from "../components/pv/AnalyticsBreakdown";
 import PlaceProgressList from "../components/pv/PlaceProgressList";
 import ProgressDetails from "../components/pv/ProgressDetails";
 import PvPageHeader from "../components/pv/PvPageHeader";
+import SetTargetDrawer from "../components/pv/SetTargetDrawer";
 import WorkProgressCard from "../components/pv/WorkProgressCard";
 import YearSelect from "../components/pv/YearSelect";
+import AnalysisFilters from "../components/pv/analysis/AnalysisFilters";
+import PlacesTable from "../components/pv/analysis/PlacesTable";
+import SubscriptionsTable from "../components/pv/analysis/SubscriptionsTable";
+import SummaryCards from "../components/pv/analysis/SummaryCards";
 import { Reveal } from "../components/pv/Animated";
 import { apiErrorMessage } from "../api/axios";
-import { fetchPvAnalytics } from "../api/pv";
+import { fetchAnalysisSummary, fetchPvAnalytics } from "../api/pv";
+import { ANALYSIS_TABS, useAnalysisParams } from "../hooks/useAnalysisParams";
 import type { PvAnalytics } from "../types/pv";
+import type { AnalysisSummary } from "../types/pvAnalysis";
 
 /**
- * Pravasi Vayana → Analytics: work progress for the leader's place, then each place below it.
+ * Pravasi Vayana → Analytics. Overview: work progress for the place, then each place below it.
+ * The other tabs analyse the campaign's subscriptions with shared filters, all kept in the URL.
  * Clicking a place opens its report; the trail at the top goes back up, never above the leader.
  */
 function PvAnalyticsPage() {
-  const [year, setYear] = useState<number | undefined>(undefined);
-  // undefined: the leader's own place.
-  const [orgId, setOrgId] = useState<number | undefined>(undefined);
-  const [analytics, setAnalytics] = useState<PvAnalytics | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { tab, filters, sort, dir, page, pageSize, update, activeFilters, resetFilters } = useAnalysisParams();
+  const [analytics, setAnalytics] = useState<{ key: string; data?: PvAnalytics; error?: string } | null>(null);
+  const [summary, setSummary] = useState<{ key: string; data?: AnalysisSummary; error?: string } | null>(null);
+  const [settingTarget, setSettingTarget] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const overview = tab === "overview";
+  const overviewKey = `${filters.year}:${filters.orgId}`;
   useEffect(() => {
+    if (!overview) return;
     let current = true;
-    fetchPvAnalytics({ year, orgId })
-      .then((loaded) => {
-        if (!current) return;
-        setAnalytics(loaded);
-        setError(null);
-      })
-      .catch((failure) => current && setError(apiErrorMessage(failure, "Could not load the analytics.")));
+    fetchPvAnalytics({ year: filters.year, orgId: filters.orgId })
+      .then((data) => current && setAnalytics({ key: overviewKey, data }))
+      .catch((failure) => current && setAnalytics({ key: overviewKey, error: apiErrorMessage(failure, "Could not load the analytics.") }));
     return () => {
       current = false;
     };
-  }, [year, orgId]);
+    // overviewKey covers year and place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview, overviewKey]);
+
+  // The cards above the analysis tabs; also the years and the place's trail.
+  const summaryKey = JSON.stringify(filters);
+  useEffect(() => {
+    if (overview) return;
+    let current = true;
+    fetchAnalysisSummary(filters)
+      .then((data) => current && setSummary({ key: summaryKey, data }))
+      .catch((failure) => current && setSummary({ key: summaryKey, error: apiErrorMessage(failure, "Could not load the analysis.") }));
+    return () => {
+      current = false;
+    };
+    // summaryKey covers the filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview, summaryKey]);
+
+  const shownAnalytics = overview && analytics?.key === overviewKey ? analytics : null;
+  const shownSummary = !overview && summary?.key === summaryKey ? summary : null;
+  const loaded = overview ? shownAnalytics?.data : shownSummary?.data;
+  const error = overview ? shownAnalytics?.error : shownSummary?.error;
+  // Kept while the next one loads, so the header does not jump.
+  const scope = loaded?.scope ?? (overview ? analytics?.data?.scope : summary?.data?.scope);
+  // A unit has no places below it, so the analysis tabs have nothing to compare: Overview only.
+  const isUnit = scope?.place.level === "Unit";
+  useEffect(() => {
+    if (isUnit && !overview) update({ tab: undefined });
+  }, [isUnit, overview, update]);
+  const years = loaded?.years ?? [];
+  const year = loaded?.year ?? null;
 
   function open(id: number) {
-    setOrgId(id);
+    update({ org_id: id, page: undefined });
     window.scrollTo({ top: 0 });
   }
 
   // The trail from the leader's own place down to the place shown.
-  const path = analytics?.scope.path ?? [];
-  const trail = path.slice(Math.max(0, path.findIndex((place) => place.id === analytics?.scope.top_id)));
+  const path = scope?.path ?? [];
+  const trail = path.slice(Math.max(0, path.findIndex((place) => place.id === scope?.top_id)));
+
+  const filterPanel = (
+    <AnalysisFilters filters={filters} activeCount={activeFilters} onChange={update} onReset={resetFilters} />
+  );
 
   return (
     <main className="space-y-5">
-      <PvPageHeader
-        title="Analytics"
-        subtitle={analytics?.year ? `Pravasi Vayana ${analytics.year}` : "Pravasi Vayana"}
-      >
-        <YearSelect years={analytics?.years ?? []} value={analytics?.year ?? null} onChange={setYear} />
+      <PvPageHeader title="Analytics" subtitle={year ? `Pravasi Vayana ${year}` : "Pravasi Vayana"}>
+        <YearSelect years={years} value={year} onChange={(next) => update({ year: next })} />
+        {!overview && (
+          <Button variant="outline" className="lg:hidden" onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal />
+            Filters{activeFilters > 0 ? ` (${activeFilters})` : ""}
+          </Button>
+        )}
+        <Button onClick={() => setSettingTarget(true)}>
+          <Target />
+          Set Target
+        </Button>
       </PvPageHeader>
+
+      <SetTargetDrawer open={settingTarget} onOpenChange={setSettingTarget} />
+
+      {!isUnit && (
+        <nav aria-label="Analysis" className="overflow-x-auto rounded-2xl bg-white p-1">
+          <div className="flex min-w-max gap-1">
+            {ANALYSIS_TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={tab === item.id ? "page" : undefined}
+                onClick={() => update({ tab: item.id })}
+                className={`rounded-xl px-4 py-2 text-[13px] transition-colors ${
+                  tab === item.id ? "bg-navy font-medium text-white" : "text-[#555] hover:bg-[#faf7f3]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
 
       {trail.length > 0 && (
         <nav aria-label="Report level" className="flex flex-wrap items-center gap-1 px-1 text-[13px]">
@@ -83,27 +157,50 @@ function PvAnalyticsPage() {
         </Alert>
       )}
 
-      {!analytics && !error && <Loader label="Loading analytics…" className="min-h-[330px] rounded-2xl bg-white" />}
-
-      {analytics && (
-        // Keyed by place and year, so drilling down or changing year plays the entrance again.
-        <div key={`${analytics.scope.place.id}:${analytics.year}`} className="space-y-5">
-          <div className="grid gap-4 xl:grid-cols-[3fr_2fr]">
-            <Reveal order={0} className="[&>section]:h-full">
-              <WorkProgressCard progress={analytics.totals} />
-            </Reveal>
-            <Reveal order={1} className="[&>section]:h-full">
-              <ProgressDetails progress={analytics.totals} />
-            </Reveal>
+      {overview ? (
+        <>
+          {!shownAnalytics && <Loader label="Loading analytics…" className="min-h-[330px] rounded-2xl bg-white" />}
+          {shownAnalytics?.data && (
+            // Keyed by place and year, so drilling down or changing year plays the entrance again.
+            <div key={`${shownAnalytics.data.scope.place.id}:${shownAnalytics.data.year}`} className="space-y-5">
+              <div className="grid gap-4 xl:grid-cols-[3fr_2fr]">
+                <Reveal order={0} className="[&>section]:h-full">
+                  <WorkProgressCard progress={shownAnalytics.data.totals} />
+                </Reveal>
+                <Reveal order={1} className="[&>section]:h-full">
+                  <ProgressDetails progress={shownAnalytics.data.totals} />
+                </Reveal>
+              </div>
+              <Reveal order={2} className="grid gap-4 md:grid-cols-2">
+                <AnalyticsBreakdown analytics={shownAnalytics.data} />
+              </Reveal>
+              <Reveal order={3}>
+                <PlaceProgressList places={shownAnalytics.data.places} onOpen={(place) => open(place.id)} />
+              </Reveal>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="grid items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="hidden rounded-2xl bg-white px-4 py-5 lg:sticky lg:top-4 lg:block">{filterPanel}</aside>
+          <div className="min-w-0 space-y-5">
+            {shownSummary?.data ? (
+              <SummaryCards summary={shownSummary.data} />
+            ) : (
+              !error && <Loader label="Loading…" className="min-h-[96px] rounded-2xl bg-white" />
+            )}
+            {tab === "new" || tab === "old" ? (
+              <SubscriptionsTable tab={tab} filters={filters} sort={sort} dir={dir} page={page} pageSize={pageSize} onChange={update} />
+            ) : (
+              <PlacesTable tab={tab} filters={filters} onOpen={open} />
+            )}
           </div>
-          <Reveal order={2} className="grid gap-4 md:grid-cols-2">
-            <AnalyticsBreakdown analytics={analytics} />
-          </Reveal>
-          <Reveal order={3}>
-            <PlaceProgressList places={analytics.places} onOpen={(place) => open(place.id)} />
-          </Reveal>
         </div>
       )}
+
+      <FormPanel open={filtersOpen} onOpenChange={setFiltersOpen} title="Filters">
+        {filterPanel}
+      </FormPanel>
     </main>
   );
 }

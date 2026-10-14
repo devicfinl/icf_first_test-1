@@ -13,8 +13,9 @@ import { apiErrorMessage } from "../../api/axios";
 import { lookupSubscribers } from "../../api/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import { EMPTY_SUBSCRIBER_FORM, formFromExisting, modeLabel } from "../../lib/pv";
-import type { ExistingSubscriber, SubscriberLookup } from "../../types/pv";
+import type { ExistingSubscriber, OrgPlace, SubscriberLookup } from "../../types/pv";
 import ConfirmDialog from "../ConfirmDialog";
+import HierarchyFilter from "./analysis/HierarchyFilter";
 
 const initials = (name: string) =>
   name
@@ -30,18 +31,21 @@ const addressLine = ({ previous }: ExistingSubscriber) =>
     .join(", ");
 
 /**
- * Subscriber Information: "Is Existing Subscriber". Yes shows a search by subscriber number or
- * mobile number; choosing a result fills the form from their previous subscription (every field
- * stays editable) and the save becomes a renewal.
+ * "Is Existing Subscriber". Yes shows a search by name, mobile, address, ledger or subscriber
+ * number, optionally within one place below the leader's (division, unit, ...); a place alone
+ * lists its subscribers. Choosing a result fills the form from their previous subscription (every
+ * field stays editable) and the save becomes a renewal.
  */
 type Props = {
+  /** The leader's own place: the place dropdowns start below it. */
+  rootId: number;
   /** A subscriber already chosen (renewing from the renew list): shown as selected. */
   initial?: ExistingSubscriber;
   /** After a result is chosen and the fields are filled, e.g. to set the organisation dropdowns. */
   onChosen: (subscriber: ExistingSubscriber) => void;
 };
 
-function ExistingSubscriberSection({ initial, onChosen }: Props) {
+function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
   const {
     control,
     setValue,
@@ -55,6 +59,8 @@ function ExistingSubscriberSection({ initial, onChosen }: Props) {
   const chosenId = useWatch({ control, name: "subscriberId" });
 
   const [query, setQuery] = useState("");
+  // The places chosen to search in, from below the leader's down (empty: the whole branch).
+  const [placePath, setPlacePath] = useState<OrgPlace[]>([]);
   const [result, setResult] = useState<SubscriberLookup | null>(initial ? { year: null, subscribers: [initial] } : null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -85,14 +91,15 @@ function ExistingSubscriberSection({ initial, onChosen }: Props) {
 
   async function search() {
     const q = query.trim();
-    if (!q) {
-      setSearchError("Please enter the subscriber number or mobile number.");
+    const orgId = placePath.at(-1)?.id;
+    if (!q && orgId === undefined) {
+      setSearchError("Please enter a name, mobile, address or ledger number, or choose a place.");
       return;
     }
     setSearching(true);
     setSearchError(null);
     try {
-      setResult(await lookupSubscribers(q));
+      setResult(await lookupSubscribers(q, orgId));
     } catch (error) {
       setResult(null);
       setSearchError(apiErrorMessage(error, "Could not search. Please try again."));
@@ -142,14 +149,14 @@ function ExistingSubscriberSection({ initial, onChosen }: Props) {
       {isExisting === "Y" && (
         <div className="space-y-4 md:col-span-2">
           <Field data-invalid={searchError || errors.subscriberId ? true : undefined}>
-            <FieldLabel htmlFor="subscriberSearch">Subscriber Number or Mobile Number</FieldLabel>
+            <FieldLabel htmlFor="subscriberSearch">Search subscriber</FieldLabel>
             <div className="flex gap-2">
               <Input
                 id="subscriberSearch"
                 value={query}
                 inputMode="search"
                 autoComplete="off"
-                placeholder="e.g. 10452 or 91678230"
+                placeholder="Name, mobile, address, PV ledger or subscriber no."
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={onSearchKey}
                 className="h-10 bg-white"
@@ -161,6 +168,17 @@ function ExistingSubscriberSection({ initial, onChosen }: Props) {
             </div>
             <FieldError>{searchError ?? errors.subscriberId?.message}</FieldError>
           </Field>
+
+          <div className="space-y-2">
+            <p className="text-[13px] text-[#555]">Search in (optional)</p>
+            <HierarchyFilter rootId={rootId} path={placePath} onChange={(_id, path) => setPlacePath(path)} />
+          </div>
+
+          {result?.more && (
+            <p className="text-[13px] text-amber-700">
+              Showing the first {result.subscribers.length} matches. Type more of the name or choose a place to narrow it down.
+            </p>
+          )}
 
           {result && result.subscribers.length === 0 && (
             <Alert className="rounded-xl bg-white">

@@ -9,7 +9,7 @@ import AppHeader from "./AppHeader";
 import ChangePasswordDrawer from "../account/ChangePasswordDrawer";
 import HierarchyBreadcrumb from "./HierarchyBreadcrumb";
 import Sidebar from "./sidebar/Sidebar";
-import { isLeaderLevel, positionPath, roleLabel } from "../../lib/organisation";
+import { positionPath, roleLabel } from "../../lib/organisation";
 import { fetchProfile, logoutUser, selectPosition } from "../../thunks/authThunk";
 import type { AppDispatch, RootState } from "../../store/store";
 import type { MemberPosition } from "../../types/auth";
@@ -49,7 +49,6 @@ function AppShell() {
   }
 
   const path = positionPath(profile?.organisation.hierarchy ?? [], position?.organisation.id);
-  const isLeader = isLeaderLevel(position?.organisation.level);
 
   return (
     <div className="min-h-screen bg-[#f7f3ee] text-[#1f1f1f]">
@@ -66,7 +65,6 @@ function AppShell() {
             collapsed={collapsed}
             onToggle={() => setCollapsed((value) => !value)}
             onSignOut={() => void handleSignOut()}
-            isLeader={isLeader}
           />
         </aside>
 
@@ -78,8 +76,7 @@ function AppShell() {
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
               onSignOut={() => void handleSignOut()}
-              isLeader={isLeader}
-            />
+              />
           </SheetContent>
         </Sheet>
 

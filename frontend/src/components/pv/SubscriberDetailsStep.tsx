@@ -4,32 +4,23 @@ import { Button } from "@/components/ui/button";
 
 import FormSection from "../form/FormSection";
 import TextField from "../form/TextField";
-import ExistingSubscriberSection from "./ExistingSubscriberSection";
 import OrganisationFields from "./OrganisationFields";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import type { OrgLevel } from "../../hooks/useOrganisationLevels";
-import type { ExistingSubscriber, OrgPlace } from "../../types/pv";
+import type { OrgPlace } from "../../types/pv";
 
 type Props = {
   /** Kept mounted while hidden, so step 2 can go back without losing anything. */
   visible: boolean;
-  /** The leader's form has "Is Existing Subscriber"; the public form does not. */
-  showExistingSearch: boolean;
-  /** Renewing this subscriber, chosen before the form opened. */
-  renew?: ExistingSubscriber;
-  onSubscriberChosen: (subscriber: ExistingSubscriber) => void;
   path: OrgPlace[];
   levels: OrgLevel[];
   onChoosePlace: (index: number, placeId: number | null) => void;
   onContinue: () => void;
 };
 
-/** Step 1: organisation, existing-subscriber search, personal, address and contact details. */
+/** The details step: organisation, personal, address and contact details. */
 function SubscriberDetailsStep({
   visible,
-  showExistingSearch,
-  renew,
-  onSubscriberChosen,
   path,
   levels,
   onChoosePlace,
@@ -43,8 +34,6 @@ function SubscriberDetailsStep({
   return (
     <div className={visible ? "space-y-8" : "hidden"}>
       <OrganisationFields path={path} levels={levels} onChoose={onChoosePlace} error={errors.unitId?.message} />
-
-      {showExistingSearch && <ExistingSubscriberSection initial={renew} onChosen={onSubscriberChosen} />}
 
       <FormSection title="Personal Information">
         <TextField

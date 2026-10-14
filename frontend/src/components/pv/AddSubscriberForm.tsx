@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import Loader from "../loading-ui/Loader";
 
 import RegistrationSuccess from "./RegistrationSuccess";
+import FindSubscriberStep from "./FindSubscriberStep";
 import SubscriberDetailsStep from "./SubscriberDetailsStep";
 import SubscriptionStep from "./SubscriptionStep";
 import { apiErrorMessage } from "../../api/axios";
@@ -19,8 +20,9 @@ import { useRegistrationPrice } from "../../hooks/useRegistrationPrice";
 import { useUnsavedChangesWarning } from "../../hooks/useUnsavedChangesWarning";
 import { EMPTY_SUBSCRIBER_FORM, formFromExisting, formFromView, toPublicRequest, toRegistrationRequest } from "../../lib/pv";
 import type { ApiEnvelope } from "../../types/auth";
-import type { CreatedRegistration, ExistingSubscriber, RegistrationContext, SubscriberView } from "../../types/pv";
+import type { CreatedRegistration, ExistingSubscriber, IcfMember, RegistrationContext, SubscriberView } from "../../types/pv";
 import {
+  ADD_SUBSCRIBER_FIND_FIELDS,
   ADD_SUBSCRIBER_STEP1_FIELDS,
   addSubscriberSchema,
   type AddSubscriberFormData,
@@ -70,7 +72,11 @@ function AddSubscriberForm({
 
   const [context, setContext] = useState<RegistrationContext | null>(null);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [step, setStep] = useState<1 | 2>(1);
+  // A leader adding a subscriber starts by finding them (existing subscriber or ICF member).
+  const steps = !isPublic && !editing ? (["find", "details", "subscription"] as const) : (["details", "subscription"] as const);
+  const [stepIndex, setStepIndex] = useState(0);
+  const step = steps[stepIndex]!;
+  const goTo = (name: (typeof steps)[number]) => setStepIndex(Math.max(0, (steps as readonly string[]).indexOf(name)));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedRegistration | null>(null);
 
@@ -141,17 +147,41 @@ function AddSubscriberForm({
     }
   }
 
-  const scrollToTop = () => topRef.current?.scrollIntoView({ block: "start" });
+  // An ICF member was found: set the dropdowns to their unit.
+  function onMemberFound(member: IcfMember) {
+    if (context?.choose_unit && member.path.length > 0) {
+      void selectPath(context.leader.id, member.path);
+    }
+  }
 
-  async function continueToStep2() {
-    const valid = await trigger([...ADD_SUBSCRIBER_STEP1_FIELDS]);
+  async function continueToDetails() {
     // A renewal needs the subscriber chosen from the search results.
     if (getValues("isExisting") === "Y" && !getValues("subscriberId")) {
       setError("subscriberId", { message: "Please search and select the subscriber, or choose No." });
       return;
     }
-    if (valid) {
-      setStep(2);
+    if (getValues("isExisting") === "N") {
+      const member = getValues("isIcfMember");
+      if (!member) {
+        setError("isIcfMember", { message: "Please answer whether they are an ICF member." });
+        return;
+      }
+      if (member === "Yes" && !getValues("membershipId")) {
+        setError("membershipId", { message: "Please enter the membership number and get the details." });
+        return;
+      }
+    }
+    if (await trigger([...ADD_SUBSCRIBER_FIND_FIELDS])) {
+      goTo("details");
+      scrollToTop();
+    }
+  }
+
+  const scrollToTop = () => topRef.current?.scrollIntoView({ block: "start" });
+
+  async function continueToSubscription() {
+    if (await trigger([...ADD_SUBSCRIBER_STEP1_FIELDS])) {
+      goTo("subscription");
       scrollToTop();
     }
   }
@@ -177,15 +207,17 @@ function AddSubscriberForm({
     } catch (error) {
       // Field errors come back as "body.<field>"; show them next to the field, on the right step.
       const fieldErrors = (error as AxiosError<ApiEnvelope<unknown>>).response?.data?.errors ?? [];
-      let backToStep1 = false;
+      // Back to the earliest step with an error.
+      let back: (typeof steps)[number] | null = null;
       for (const { field, message } of fieldErrors) {
         const name = field.replace(/^body\./, "") as keyof AddSubscriberFormInput;
         if (name in EMPTY_SUBSCRIBER_FORM) {
           setError(name, { message });
-          if ((ADD_SUBSCRIBER_STEP1_FIELDS as readonly string[]).includes(name)) backToStep1 = true;
+          if ((ADD_SUBSCRIBER_FIND_FIELDS as readonly string[]).includes(name) && steps[0] === "find") back = "find";
+          else if ((ADD_SUBSCRIBER_STEP1_FIELDS as readonly string[]).includes(name) && back === null) back = "details";
         }
       }
-      if (backToStep1) setStep(1);
+      if (back) goTo(back);
       setSubmitError(apiErrorMessage(error, "Could not save the subscriber. Please try again."));
     }
   }
@@ -195,23 +227,27 @@ function AddSubscriberForm({
     reset({ ...EMPTY_SUBSCRIBER_FORM, unitId });
     setCreated(null);
     setSubmitError(null);
-    setStep(1);
+    setStepIndex(0);
   }
 
-  const onStep2 = step === 2 && !created;
+  const canGoBack = stepIndex > 0 && !created;
 
   return (
     <div ref={topRef} className="scroll-mt-6">
       <div className="mb-6 flex items-end justify-between gap-4 pr-10">
         <h2 className="font-heading text-2xl font-bold text-foreground">{title}</h2>
-        {!created && context && <p className="text-sm text-muted-foreground">Step {step} of 2</p>}
+        {!created && context && (
+          <p className="text-sm text-muted-foreground">
+            Step {stepIndex + 1} of {steps.length}
+          </p>
+        )}
       </div>
 
-      {onStep2 && (
+      {canGoBack && (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setStep(1)}
+          onClick={() => setStepIndex((index) => index - 1)}
           className="group/button mb-3 -ml-2.5 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="transition-transform duration-200 group-hover/button:-translate-x-0.5 motion-reduce:transform-none" />
@@ -239,17 +275,24 @@ function AddSubscriberForm({
             noValidate
             className="flex flex-col gap-8 [&_input:not(:disabled):not([type=radio])]:bg-white [&_select:not(:disabled)]:bg-white"
           >
+            {steps[0] === "find" && (
+              <FindSubscriberStep
+                visible={step === "find"}
+                rootId={context.leader.id}
+                renew={renew}
+                onSubscriberChosen={onSubscriberChosen}
+                onMemberFound={onMemberFound}
+                onContinue={() => void continueToDetails()}
+              />
+            )}
             <SubscriberDetailsStep
-              visible={step === 1}
-              showExistingSearch={!isPublic && !editing}
-              renew={renew}
-              onSubscriberChosen={onSubscriberChosen}
+              visible={step === "details"}
               path={context.path}
               levels={levels}
               onChoosePlace={choosePlace}
-              onContinue={() => void continueToStep2()}
+              onContinue={() => void continueToSubscription()}
             />
-            {step === 2 && (
+            {step === "subscription" && (
               <SubscriptionStep
                 price={price}
                 showCashReceived={!isPublic}

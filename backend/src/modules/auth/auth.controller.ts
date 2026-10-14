@@ -167,6 +167,12 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
 
   const positions = await cabinetPositions(user.memberNo);
 
+  // Only members holding a cabinet committee position (committee_designations.is_cabinet = 'Y')
+  // may sign in. Checked after the password, so it reveals nothing to someone guessing.
+  if (positions.length === 0) {
+    throw new AppError("Only members holding a cabinet committee position can sign in.", 403);
+  }
+
   // One position is applied now; several must be chosen via select-position.
   const position = positions.length === 1 ? positions[0]! : null;
   const requiresPositionSelection = positions.length > 1;

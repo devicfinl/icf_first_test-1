@@ -51,7 +51,7 @@ export function createAttemptLimiter({ maxAttempts, windowMs }: AttemptLimiterOp
     },
 
     recordFailure(key) {
-      sweep();
+      sweep(); 
       const entry = entries.get(key);
       const expiresAt = Date.now() + windowMs;
 

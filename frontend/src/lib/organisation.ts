@@ -1,12 +1,5 @@
 import type { OrganisationLevel } from "../types/auth";
 
-// Region, Division and Unit leaders can add Pravasi Vayana subscribers. The server checks again.
-const LEADER_LEVELS = ["Region", "Division", "Unit"];
-
-export function isLeaderLevel(level: string | null | undefined): boolean {
-  return LEADER_LEVELS.includes(level ?? "");
-}
-
 // "Unit Secretary": the place's level before the designation, unless the designation already says it.
 export function roleLabel(designation: string | undefined, level: string | null | undefined): string {
   if (!designation) return "";

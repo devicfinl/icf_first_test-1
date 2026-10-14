@@ -2,7 +2,7 @@ import {
   Layers,
   RefreshCw,
   TrendingUp,
-  UsersRound,
+  Target,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -107,7 +107,7 @@ function Tile({
 
 /**
  * Work Progress: subscriptions ÷ target as a percentage, the ring with New and Renew, and four
- * tiles. Target is the membership count.
+ * tiles. Target is the print + digital target from Set Target.
  */
 function WorkProgressCard({ progress }: { progress: PvProgress }) {
   return (
@@ -135,11 +135,7 @@ function WorkProgressCard({ progress }: { progress: PvProgress }) {
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tile icon={Layers} label="Total Units" value={progress.total_units} />
-        <Tile
-          icon={UsersRound}
-          label="Membership"
-          value={progress.membership}
-        />
+        <Tile icon={Target} label="Total Target" value={progress.target} />
         <Tile icon={TrendingUp} label="New" value={progress.new} />
         <Tile icon={RefreshCw} label="Renew" value={progress.renewals} />
       </div>

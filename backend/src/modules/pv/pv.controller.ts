@@ -10,6 +10,7 @@ import {
 } from "../../utils/reference-data.js";
 import { handleError, sendSuccess } from "../../utils/response.js";
 import { validate } from "../../utils/validate.js";
+import { targetRows } from "./pv-targets.controller.js";
 
 
 /* ------------------------------------------------------------------ request schemas */
@@ -98,10 +99,20 @@ function subscriberRules(
 }
 
 // Entered by a leader.
+// ICF membership numbers: 2 letters and 7 digits, e.g. OM0001234.
+const MEMBERSHIP_NO = /^[A-Z]{2}\d{7}$/;
+const membershipNo = (value: unknown) => (typeof value === "string" ? value.trim().toUpperCase() : value);
+
 export const registrationBody = z
   .strictObject({
     ...subscriberFields,
     cashReceived: z.enum(["Y", "N"], { error: "Please answer whether cash was received." }).default("N"),
+    // Asked of a new subscriber; Yes needs the membership number (found with the member lookup).
+    isIcfMember: z.enum(["Yes", "No"], { error: "Please answer whether they are an ICF member." }).optional(),
+    membershipId: z.preprocess(
+      (value) => blankToUndefined(membershipNo(value)),
+      z.string().regex(MEMBERSHIP_NO, "Please enter a valid membership number, e.g. OM0001234.").optional(),
+    ),
     // Set when renewing an existing subscriber (found with the lookup); absent for a new one.
     subscriberId: positiveId("Please choose the subscriber again.").optional(),
   })
@@ -223,6 +234,8 @@ function normalizeSubscriberBody(b: any) {
     distributorArea: blankToUndef(typeof b.distributorArea === "string" ? b.distributorArea.trim() : b.distributorArea),
     deliveryResponsibility: blankToUndef(typeof b.deliveryResponsibility === "string" ? b.deliveryResponsibility.trim() : b.deliveryResponsibility),
     cashReceived: b.cashReceived ?? "N",
+    isIcfMember: blankToUndef(b.isIcfMember),
+    membershipId: blankToUndef(membershipNo(b.membershipId)),
   };
 }
 
@@ -350,23 +363,28 @@ async function runSubscriberValidation(req: Request) {
 
 // hierarchy_names.hlevelname. Saudi has a Chapter level between National and Region; other
 // countries go National -> Region -> (Division) -> Unit.
-const LEVEL = {
+export const LEVEL = {
   international: "International",
+  national: "National",
   chapter: "Chapter",
   region: "Region",
   division: "Division",
   unit: "Unit",
 } as const;
 
-// Cabinet positions at these levels may add subscribers.
-const LEADER_LEVELS: ReadonlySet<string> = new Set([LEVEL.region, LEVEL.division, LEVEL.unit]);
+// Levels offered in the organisation dropdowns, below a leader's own place. National is included
+// so an International leader can choose the country.
+const SELECTABLE_LEVELS: ReadonlySet<string> = new Set([
+  LEVEL.national,
+  LEVEL.chapter,
+  LEVEL.region,
+  LEVEL.division,
+  LEVEL.unit,
+]);
 
-// Levels offered in the organisation dropdowns, below a leader's own place.
-const SELECTABLE_LEVELS: ReadonlySet<string> = new Set([LEVEL.chapter, LEVEL.region, LEVEL.division, LEVEL.unit]);
+const NOT_A_LEADER = "Only members holding a cabinet committee position can add subscribers.";
 
-const NOT_A_LEADER = "Only Region, Division and Unit leaders can add subscribers.";
-
-interface Leader {
+export interface Leader {
   userId: number;
   organisation: OrganisationLevel;
   // From the top of the hierarchy down to the leader's own place.
@@ -374,9 +392,9 @@ interface Leader {
 }
 
 // The caller as a leader: the session's committee position must still be a cabinet position this
-// member holds, at Region, Division or Unit level. Re-read on every request, like /auth/me, so a
-// lost position or a disabled account takes effect at once.
-async function requireLeader(auth: Request["auth"]): Promise<Leader> {
+// member holds, at any level. They work within that place and everything below it. Re-read on every
+// request, like /auth/me, so a lost position or a disabled account takes effect at once.
+export async function requireLeader(auth: Request["auth"]): Promise<Leader> {
   const userId = Number(auth?.userId);
   const position = auth?.position;
 
@@ -426,7 +444,7 @@ async function requireLeader(auth: Request["auth"]): Promise<Leader> {
   const path = await organisationChain(position.orgid);
   const organisation = path.at(-1);
 
-  if (!organisation || organisation.id !== position.orgid || !LEADER_LEVELS.has(organisation.level ?? "")) {
+  if (!organisation || organisation.id !== position.orgid) {
     throw AppError.forbidden(NOT_A_LEADER);
   }
 
@@ -435,7 +453,7 @@ async function requireLeader(auth: Request["auth"]): Promise<Leader> {
 
 // The chain of a place the leader asked about, refused unless the leader's own place is on it
 // (the place is the leader's own, or below it).
-async function requireInScope(leader: Leader, orgId: number): Promise<OrganisationLevel[]> {
+export async function requireInScope(leader: Leader, orgId: number): Promise<OrganisationLevel[]> {
   const chain = await organisationChain(orgId);
 
   if (!chain.some((place) => place.id === leader.organisation.id)) {
@@ -458,7 +476,7 @@ async function requireUnitInScope(leader: Leader, unitId: number): Promise<Organ
 // Every place in the branch under `rootId` (the place itself and everything below it), mapped to
 // the place directly below the root it sits under (null for the root itself). Walked one level at
 // a time; a place already seen is skipped, so a bad hparent loop cannot run forever.
-async function branchUnder(rootId: number): Promise<Map<number, number | null>> {
+export async function branchUnder(rootId: number): Promise<Map<number, number | null>> {
   const branches = new Map<number, number | null>([[rootId, null]]);
   let frontier = [rootId];
 
@@ -481,10 +499,10 @@ async function branchUnder(rootId: number): Promise<Map<number, number | null>> 
 const branchOf = (leader: Leader) => branchUnder(leader.organisation.id);
 
 // "unit_id IN (?, ?, ...)" for raw queries: one bound placeholder per id, never the ids themselves.
-const inPlaceholders = (ids: readonly number[]) => ids.map(() => "?").join(", ");
+export const inPlaceholders = (ids: readonly number[]) => ids.map(() => "?").join(", ");
 
 // For display: the path from the country down, without the International level above it.
-function displayPath(path: OrganisationLevel[]): OrganisationLevel[] {
+export function displayPath(path: OrganisationLevel[]): OrganisationLevel[] {
   return path.filter((place) => place.level !== LEVEL.international);
 }
 
@@ -501,12 +519,35 @@ interface OpenPrice {
 
 // The open (not Closed) vayana_subscription row for the unit's country. Exactly one must exist:
 // none means no price is set, or the campaign is closed; two would make the price ambiguous.
+// The 2-letter country code for a place: its own country_code, or failing that the nearest place
+// above it that has one (some units leave it blank and only the region or country row carries it).
+async function countryCodeFor(orgId: number): Promise<string | null> {
+  const seen = new Set<number>();
+  let currentId: number | null = orgId;
+
+  while (currentId !== null && !seen.has(currentId)) {
+    seen.add(currentId);
+    const place: { countryCode: string | null; hparent: number | null; hlevel: number | null } | null =
+      await prisma.organisationUnit.findUnique({
+        where: { orgid: currentId },
+        select: { countryCode: true, hparent: true, hlevel: true },
+      });
+    if (!place) return null;
+
+    const code = place.countryCode?.trim().toUpperCase();
+    if (code) return code;
+    // ICF International has no country; stop there.
+    if (place.hlevel === 1) return null;
+    currentId = place.hparent;
+  }
+  return null;
+}
+
 async function openPriceForUnit(unitId: number): Promise<OpenPrice> {
-  const unit = await prisma.organisationUnit.findUnique({ where: { orgid: unitId }, select: { countryCode: true } });
-  const countryCode = unit?.countryCode?.trim().toUpperCase();
+  const countryCode = await countryCodeFor(unitId);
 
   if (!countryCode) {
-    throw AppError.badRequest("This unit has no country set.");
+    throw AppError.badRequest("This unit has no country set (organisation_master.country_code is blank up to the country).");
   }
 
   const rows = await prisma.vayanaSubscription.findMany({
@@ -522,17 +563,21 @@ async function openPriceForUnit(unitId: number): Promise<OpenPrice> {
     },
   });
 
+  // The messages name the country and what was found, so a missing or duplicate price row can be
+  // spotted from the screen.
   if (rows.length === 0) {
-    throw AppError.badRequest("Subscription amount not set for this country.");
+    throw AppError.badRequest(`Subscription amount not set for this country (no vayana_subscription row for ${countryCode}).`);
   }
 
   const open = rows.filter((row) => (row.campaignStatus ?? "").trim().toLowerCase() !== "closed");
 
   if (open.length === 0) {
-    throw AppError.badRequest("The subscription campaign for this country is closed.");
+    const years = rows.map((row) => row.year?.trim()).filter(Boolean).join(", ");
+    throw AppError.badRequest(`The subscription campaign for ${countryCode} is closed (rows for ${years || "no year"} are all Closed).`);
   }
   if (open.length > 1) {
-    throw AppError.badRequest("More than one subscription campaign is open for this country.");
+    const years = open.map((row) => `${row.year?.trim() || "?"} (${row.campaignStatus?.trim() || "no status"})`).join(", ");
+    throw AppError.badRequest(`More than one subscription campaign is open for ${countryCode}: ${years}. Mark the old ones Closed.`);
   }
 
   const row = open[0]!;
@@ -540,7 +585,7 @@ async function openPriceForUnit(unitId: number): Promise<OpenPrice> {
   const currency = row.currency?.trim();
 
   if (!Number.isInteger(year) || !currency) {
-    throw AppError.badRequest("Subscription amount not set for this country.");
+    throw AppError.badRequest(`Subscription amount not set for this country (the ${countryCode} row has no valid year or currency).`);
   }
 
   // A price of 0 or below is treated as not set, so a subscription is never saved for nothing.
@@ -569,7 +614,7 @@ const priceResponse = (price: OpenPrice) => ({
 });
 
 // The places directly below one place that a form's dropdown offers, by name.
-async function selectablePlacesBelow(parentId: number): Promise<OrganisationLevel[]> {
+export async function selectablePlacesBelow(parentId: number): Promise<OrganisationLevel[]> {
   const rows = await prisma.organisationUnit.findMany({ where: { hparent: parentId }, select: { orgid: true } });
   const summaries = await resolveOrganisationSummaries(rows.map((row) => row.orgid));
 
@@ -666,7 +711,7 @@ async function subscriptionHistory(subscriberIds: readonly number[]): Promise<Ma
 
 // The year new subscriptions are taken for in the leader's country, or null while no campaign
 // is open (saving is refused then anyway, with the reason).
-async function openYearFor(orgId: number): Promise<number | null> {
+export async function openYearFor(orgId: number): Promise<number | null> {
   try {
     return (await openPriceForUnit(orgId)).year;
   } catch (error) {
@@ -736,6 +781,30 @@ async function findSubscribers(search: string): Promise<MasterMatch[]> {
   return [...found.values()];
 }
 
+// Subscribers with a subscription in these places whose name, ledger number or address contains
+// `search` (every subscriber there without a search), most recent first.
+async function searchSubscriberIds(search: string, placeIds: readonly number[]): Promise<number[]> {
+  if (placeIds.length === 0) return [];
+  const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const text = search
+    ? ` AND (m.name LIKE ? OR (m.ledger_no LIKE ? AND m.ledger_no <> ?) OR (d.ledger_no LIKE ? AND d.ledger_no <> ?)
+         OR d.shop_name LIKE ? OR d.building_name LIKE ? OR d.street LIKE ? OR d.area LIKE ? OR d.province LIKE ?)`
+    : "";
+  // The placeholder ledger is shared by many legacy subscribers, so it never matches.
+  const textValues = [like, like, PLACEHOLDER_LEDGER, like, PLACEHOLDER_LEDGER, like, like, like, like, like];
+  const rows = await prisma.$queryRawUnsafe<{ subscriber_id: number }[]>(
+    `SELECT d.subscriber_id, MAX(d.subscription_year) AS latest
+     FROM pv_subscription_details d JOIN pv_subscription_master m ON m.subscriber_id = d.subscriber_id
+     WHERE d.unit_id IN (${inPlaceholders(placeIds)}) AND d.approval_status <> 'REJECTED'${text}
+     GROUP BY d.subscriber_id
+     ORDER BY latest DESC, d.subscriber_id DESC
+     LIMIT 200`,
+    ...placeIds,
+    ...(search ? textValues : []),
+  );
+  return rows.map((row) => Number(row.subscriber_id));
+}
+
 // A subscriber this leader may renew for `year`: their latest subscription is in the leader's
 // branch, and they have none for `year` yet.
 async function requireRenewable(leader: Leader, subscriberId: number, year: number) {
@@ -773,7 +842,7 @@ const addressChanged = (body: RegistrationBody, previous: HistoryRow) =>
 
 // The places between the leader's place and a unit, top-down and ending with the unit: what the
 // form's organisation dropdowns are set to. Empty for a Unit leader, whose unit is fixed.
-async function pathBelow(rootId: number, unitId: number): Promise<OrganisationLevel[]> {
+export async function pathBelow(rootId: number, unitId: number): Promise<OrganisationLevel[]> {
   const chain = await organisationChain(unitId);
   const index = chain.findIndex((place) => place.id === rootId);
   return index < 0 ? [] : chain.slice(index + 1);
@@ -885,34 +954,109 @@ export const registrationPrice = async (req: Request, res: Response) => {
 export const lookupSubscribers = async (req: Request, res: Response) => {
   try {
     await query("q")
+      .optional({ values: "falsy" })
       .trim()
-      .notEmpty()
-      .withMessage("Please enter the subscriber number or mobile number.")
       .isLength({ max: 100 })
       .withMessage("That search is too long.")
+      .run(req);
+    await query("org_id")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Please choose a place.")
       .run(req);
     if (!validate(req, res)) return;
 
     const leader = await requireLeader(req.user ?? req.auth);
-    const q = String(req.query.q ?? (req as any).validated?.query?.q).trim();
+    const q = String(req.query.q ?? "").trim();
+    const orgId = req.query.org_id ? Number(req.query.org_id) : undefined;
+    if (!q && orgId === undefined) {
+      throw AppError.badRequest("Please enter a name, mobile, address or ledger number, or choose a place.");
+    }
+    // A subscriber number can be one digit; text needs two characters.
+    if (q.length === 1 && !/^\d$/.test(q)) throw AppError.badRequest("Please enter at least 2 characters.");
 
-    const matches = await findSubscribers(q);
-    const [history, branches, openYear] = await Promise.all([
-      subscriptionHistory(matches.map((match) => match.subscriberId)),
-      branchOf(leader),
+    // Searched within the chosen place (inside the leader's branch), or the whole branch.
+    if (orgId !== undefined && orgId !== leader.organisation.id) await requireInScope(leader, orgId);
+    const branches = await branchUnder(orgId ?? leader.organisation.id);
+
+    const [exact, matchedIds] = await Promise.all([
+      q ? findSubscribers(q) : Promise.resolve([]),
+      searchSubscriberIds(q, [...branches.keys()]),
+    ]);
+    const exactIds = new Set(exact.map((master) => master.subscriberId));
+    const others = matchedIds.filter((id) => !exactIds.has(id));
+    const masters = [
+      ...exact,
+      ...(others.length > 0
+        ? await prisma.pvSubscriptionMaster.findMany({ where: { subscriberId: { in: others } }, select: MASTER_SELECT })
+        : []),
+    ];
+
+    const [history, openYear] = await Promise.all([
+      subscriptionHistory(masters.map((match) => match.subscriberId)),
       openYearFor(leader.organisation.id),
     ]);
 
-    const inBranch = matches
+    // Only subscribers whose latest subscription is in the place searched.
+    const inBranch = masters
       .map((master) => ({ master, rows: history.get(master.subscriberId) ?? [] }))
-      .filter(({ rows }) => rows.length > 0 && branches.has(rows[0]!.unit_id))
-      .slice(0, MAX_LOOKUP_RESULTS);
+      .filter(({ rows }) => rows.length > 0 && branches.has(rows[0]!.unit_id));
 
-    const subscribers = await describeSubscribers(leader, inBranch, openYear);
+    const subscribers = await describeSubscribers(leader, inBranch.slice(0, MAX_LOOKUP_RESULTS), openYear);
 
-    return sendSuccess(res, "Subscribers fetched successfully", { year: openYear, subscribers });
+    return sendSuccess(res, "Subscribers fetched successfully", {
+      year: openYear,
+      subscribers,
+      // More matched than are shown: the leader should narrow the search.
+      more: inBranch.length > MAX_LOOKUP_RESULTS,
+    });
   } catch (error) {
     return handleError(res, error, "PV subscriber lookup error:");
+  }
+};
+
+export const memberLookupQuery = z.strictObject({
+  membership_no: z.preprocess(membershipNo, z.string().regex(MEMBERSHIP_NO, "Please enter a valid membership number, e.g. OM0001234.")),
+});
+
+// GET /pv/members/lookup?membership_no=: an ICF member in the leader's branch, to fill a new
+// subscriber's details. Says when they are already a subscriber, so they can be renewed instead.
+export const lookupMember = async (req: Request, res: Response) => {
+  try {
+    const parsed = memberLookupQuery.safeParse(req.query);
+    if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Please enter the membership number.");
+    const no = parsed.data.membership_no;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const member = await prisma.membershipMaster.findFirst({
+      where: { membershipNo: no },
+      select: { memberName: true, mobileCountry: true, mobile: true, whatsappNo: true, unitId: true, active: true },
+    });
+    if (!member) throw AppError.notFound("No ICF member has that membership number.");
+
+    const branches = await branchOf(leader);
+    if (!branches.has(member.unitId)) throw AppError.forbidden("That member belongs to a unit outside your position.");
+
+    const [path, existing] = await Promise.all([
+      pathBelow(leader.organisation.id, member.unitId),
+      prisma.pvSubscriptionMaster.findFirst({ where: { membershipId: no }, select: { subscriberId: true, name: true } }),
+    ]);
+    const code = digits(member.mobileCountry);
+
+    return sendSuccess(res, "Member fetched successfully", {
+      membership_no: no,
+      name: member.memberName.trim(),
+      active: member.active === 1,
+      mobile_country: code || null,
+      mobile: mobileKey(code, member.mobile) || null,
+      whatsapp: mobileKey(code, member.whatsappNo) || null,
+      unit: path.at(-1) ?? null,
+      // The places from below the leader's down to the member's unit, for the form's dropdowns.
+      path,
+      existing_subscriber: existing ? { subscriber_id: existing.subscriberId, name: existing.name } : null,
+    });
+  } catch (error) {
+    return handleError(res, error, "PV member lookup error:");
   }
 };
 
@@ -933,10 +1077,35 @@ export const createRegistration = async (req: Request, res: Response) => {
       .isInt({ min: 1 })
       .withMessage("Please choose the subscriber again.")
       .run(req);
+    await body("isIcfMember")
+      .optional({ values: "falsy" })
+      .isIn(["Yes", "No"])
+      .withMessage("Please answer whether they are an ICF member.")
+      .run(req);
+    await body("membershipId")
+      .optional({ values: "falsy" })
+      .customSanitizer(membershipNo)
+      .matches(MEMBERSHIP_NO)
+      .withMessage("Please enter a valid membership number, e.g. OM0001234.")
+      .run(req);
+    if (req.body?.isIcfMember === "Yes" && !req.body?.membershipId) {
+      await body("membershipId").custom(() => false).withMessage("Please enter the membership number.").run(req);
+    }
     if (!validate(req, res)) return;
 
     const leader = await requireLeader(req.user ?? req.auth);
     const data = normalizeSubscriberBody(req.body) as RegistrationBody;
+
+    // A member's number must be a real ICF member in a unit inside the leader's branch, as the
+    // member lookup checks: the form cannot be sent with someone else's member.
+    const membershipId = data.isIcfMember === "Yes" ? data.membershipId! : null;
+    if (membershipId) {
+      const member = await prisma.membershipMaster.findFirst({ where: { membershipNo: membershipId }, select: { unitId: true } });
+      if (!member) throw AppError.badRequest("No ICF member has that membership number.");
+      if (!(await branchOf(leader)).has(member.unitId)) {
+        throw AppError.forbidden("That member belongs to a unit outside your position.");
+      }
+    }
 
 
     await requireUnitInScope(leader, data.unitId);
@@ -962,6 +1131,8 @@ export const createRegistration = async (req: Request, res: Response) => {
       whatsappCountry: data.whatsapp ? data.whatsappCountry : null,
       whatsapp: data.whatsapp ?? null,
       email: data.email ?? null,
+      // Only when asked (new subscribers): a renewal keeps what was recorded before.
+      ...(data.isIcfMember ? { isIcfMember: data.isIcfMember, membershipId } : {}),
     };
     const registrationType = renewal ? "RENEW" : "NEW";
     const previousYearUser = renewal ? "Yes" : "No";
@@ -1026,7 +1197,7 @@ export const createRegistration = async (req: Request, res: Response) => {
 /* ------------------------------------------------------------------ registrations and analytics */
 
 // Years that have subscriptions in these places, latest first.
-async function subscriptionYears(placeIds: readonly number[]): Promise<number[]> {
+export async function subscriptionYears(placeIds: readonly number[]): Promise<number[]> {
   const rows = await prisma.$queryRawUnsafe<{ year: number | null }[]>(
     `SELECT DISTINCT subscription_year AS year FROM pv_subscription_details
      WHERE unit_id IN (${inPlaceholders(placeIds)}) AND subscription_year IS NOT NULL
@@ -1054,6 +1225,9 @@ type Progress = {
   // Last year's subscribers there: the most that could renew this year.
   renewable: number;
   paid: number;
+  // Achieved per channel; print includes the old Print&Digital rows (print includes digital).
+  print: number;
+  digital: number;
   membership: number;
   total_units: number;
 };
@@ -1064,17 +1238,24 @@ const emptyProgress = (): Progress => ({
   renewals: 0,
   renewable: 0,
   paid: 0,
+  print: 0,
+  digital: 0,
   membership: 0,
   total_units: 0,
 });
 
-// Target is the membership count (docs/TASKS.md C13); progress is subscriptions ÷ target, or
-// null when there is no target, so nothing divides by zero.
-const withTarget = (progress: Progress) => ({
-  ...progress,
-  target: progress.membership,
-  progress: progress.membership > 0 ? progress.subscriptions / progress.membership : null,
-});
+// Target is the print + digital target from Set Target (0 until it is set); progress is
+// subscriptions ÷ target, or null when there is no target, so nothing divides by zero.
+const withTarget = (progress: Progress, target: { print: number; digital: number } | null | undefined) => {
+  const total = target ? target.print + target.digital : 0;
+  return {
+    ...progress,
+    target: total,
+    target_print: target?.print ?? 0,
+    target_digital: target?.digital ?? 0,
+    progress: total > 0 ? progress.subscriptions / total : null,
+  };
+};
 
 // Work progress for one year in a place: the leader's own, or (org_id) one below it. Totals for
 // the place, each place directly below it, and the split by mode and currency. Only approved
@@ -1168,6 +1349,8 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
         if (row.registration_type === "RENEW") progress.renewals += count;
         else progress.new += count;
         if (paid) progress.paid += count;
+        if (row.subscription_mode === "Digital") progress.digital += count;
+        else progress.print += count;
       });
       if (row.subscription_mode in byMode) byMode[row.subscription_mode] += count;
 
@@ -1184,8 +1367,16 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
       addTo(row.unitId, (progress) => (progress.membership += row._count._all));
     }
 
+    // Each place's print and digital target from Set Target. A draft is not given yet, except
+    // International's own (it sets its own).
+    const targets = await targetRows(prisma, "setToOrg", [rootId, ...byChild.keys()]);
+    const given = (id: number) => {
+      const row = targets.get(id);
+      return row && (row.status === "Active" || row.setByOrg === id) ? row : null;
+    };
+
     const rowsBelow = [...byChild]
-      .map(([id, progress]) => ({ ...(places.get(id) ?? { id, name: null, level: null }), ...withTarget(progress) }))
+      .map(([id, progress]) => ({ ...(places.get(id) ?? { id, name: null, level: null }), ...withTarget(progress, given(id)) }))
       .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
     return sendSuccess(res, "Analytics fetched successfully", {
@@ -1197,7 +1388,7 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
         // The leader's own place: the report can go up to here and no further.
         top_id: leader.organisation.id,
       },
-      totals: withTarget(totals),
+      totals: withTarget(totals, given(rootId)),
       by_mode: byMode,
       amounts: [...amounts.values()],
       places: rowsBelow,
@@ -1601,12 +1792,12 @@ export const rejectPublicRegistration = async (req: Request, res: Response) => {
 
 /* ------------------------------------------------------------------ public link (no login) */
 
-// A leader's public link is made for their own place: Region, Division or Unit.
+// A leader's public link is made for their own place, at any level; visitors choose the places below it.
 async function requireLinkRoot(rootId: number): Promise<OrganisationLevel[]> {
   const path = await organisationChain(rootId);
   const root = path.at(-1);
 
-  if (!root || root.id !== rootId || !LEADER_LEVELS.has(root.level ?? "")) {
+  if (!root || root.id !== rootId) {
     throw AppError.notFound("This registration link is not valid.");
   }
   return path;
