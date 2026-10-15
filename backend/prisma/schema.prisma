@@ -23,9 +23,9 @@ model User {
   @@map("users")
 }
 
-// Partial model: only the columns the API reads. The real table has many more columns,
-// so never run `prisma migrate` or `prisma db push` against this database (it would drop them).
+// Partial model: only the columns the API reads. The real table has many more columns.
 // passport_no, userPassword and hashcode are deliberately left out so they can never be returned.
+// Database is baselined with Prisma Migrate; do not run `prisma db push`.
 model MembershipMaster {
   mid                Int    @id
   membershipNo       String @map("membership_no") @db.VarChar(20)
@@ -204,3 +204,68 @@ model PvSubscriptionMaster {
 
   @@map("pv_subscription_master")
 }
+
+enum CampaignStatus {
+  Draft
+  Active
+  Closed
+}
+
+// Pravasi Vayana campaign catalogue.
+model VayanaCampaign {
+  campaignId Int            @id @default(autoincrement()) @map("campaignId")
+  name       String         @unique(map: "uq_vayana_campaign_name") @db.VarChar(100)
+  startDate  DateTime?      @map("startDate") @db.Date
+  endDate    DateTime?      @map("endDate") @db.Date
+  status     CampaignStatus @default(Draft)
+  createdBy  Int?           @map("createdBy")
+  createdAt  DateTime       @default(now()) @map("createdAt") @db.Timestamp(0)
+  updatedAt  DateTime       @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
+
+  targets    VayanaSubscriptionEntityNew[]
+
+  @@map("vayana_campaign")
+}
+
+// Pravasi Vayana target distribution per place and campaign.
+model VayanaSubscriptionEntityNew {
+  id              Int            @id @default(autoincrement())
+  campaignId      Int            @map("campaignId")
+  setByOrg        Int            @map("setByOrg")
+  setByLevel      String         @map("setByLevel") @db.VarChar(100)
+  setByName       String         @map("setByName") @db.VarChar(100)
+  setToOrg        Int            @map("setToOrg")
+  setToLevel      String         @map("setToLevel") @db.VarChar(100)
+  setToName       String         @map("setToName") @db.VarChar(100)
+  targetPrint     Int            @default(0) @map("targetPrint")
+  targetDigital   Int            @default(0) @map("targetDigital")
+  campaignStatus  String         @default("Active") @map("campaign_status") @db.VarChar(30)
+  createdAtLegacy DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  createdBy       Int?           @map("createdBy")
+  updatedBy       Int?           @map("updatedBy")
+  createdAt       DateTime       @default(now()) @map("createdAt") @db.Timestamp(0)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
+
+  campaign        VayanaCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Restrict, onUpdate: Cascade, map: "fk_target_campaign")
+
+  @@unique([setToOrg, campaignId], map: "uq_target_place_campaign")
+  @@index([campaignId], map: "fk_target_campaign")
+  @@map("vayana_subscription_entity_new")
+}
+
+// Legacy Pravasi Vayana targets table (single target column).
+model VayanaSubscriptionEntity {
+  id             Int      @id @default(autoincrement())
+  setByOrg       Int      @map("setByOrg")
+  setByLevel     String   @map("setByLevel") @db.VarChar(100)
+  setByName      String   @map("setByName") @db.VarChar(100)
+  setToOrg       Int      @map("setToOrg")
+  setToLevel     String   @map("setToLevel") @db.VarChar(100)
+  setToName      String   @map("setToName") @db.VarChar(100)
+  target         Int      @map("target")
+  campaignStatus String   @default("Active") @map("campaign_status") @db.VarChar(30)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("vayana_subscription_entity")
+}
+

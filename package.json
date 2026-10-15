@@ -17,6 +17,8 @@
     "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
     "lint": "npm --prefix frontend run lint",
     "db:generate": "npm --prefix backend run db:generate",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "db:migrate:status": "npm --prefix backend run db:migrate:status",
     "db:studio": "npm --prefix backend run db:studio"
   },
   "devDependencies": {

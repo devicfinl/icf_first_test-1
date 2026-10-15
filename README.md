@@ -39,6 +39,8 @@ origin and the API needs no CORS setup. Run one side on its own with `npm run de
 | `npm run typecheck` | Typechecks both apps |
 | `npm run lint` | Lints the frontend |
 | `npm run db:studio` | Prisma Studio against the database |
+| `npm run db:migrate` | Applies Prisma migrations safely without reset (`prisma migrate deploy`) |
+| `npm run db:migrate:status` | Checks Prisma migration status |
 
 ## Documentation
 
@@ -53,6 +55,4 @@ origin and the API needs no CORS setup. Run one side on its own with `npm run de
 - `docs/TEST_PLAN.md` — testing checklist
 - `docs/SECURITY.md` — security requirements
 
-> The database is an existing, populated MySQL instance and the Prisma schema maps only part of
-> it, so do **not** run `prisma migrate` or `prisma db push` against it — that would drop the
-> columns the schema does not mention.
+> The database has been baselined in Prisma Migrate (`prisma/migrations/0_init`). New database schema changes should be added via `schema.prisma` and applied with `npm run db:migrate` (`npx prisma migrate dev`). Do not run `prisma db push` directly against the database as it bypasses the migration history.
