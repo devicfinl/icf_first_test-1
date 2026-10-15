@@ -12,6 +12,7 @@ import {
 } from "../../utils/jwt.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { resolveOrganisationSummaries } from "../../utils/reference-data.js";
+import { resolveUserRoles } from "../../utils/rbac.js";
 import { revokeToken } from "../../utils/token-denylist.js";
 import { sendError } from "../../utils/response.js";
 import { validate } from "../../utils/validate.js";
@@ -106,6 +107,8 @@ async function requireActiveUser(userId: string) {
         name: true,
         password: true,
         active: true,
+        role: true,
+        isOfficeUser: true,
       }
     })
     : null;
@@ -145,6 +148,8 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
       name: true,
       password: true,
       active: true,
+      role: true,
+      isOfficeUser: true,
     },
   });
 
@@ -177,14 +182,28 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
   const position = positions.length === 1 ? positions[0]! : null;
   const requiresPositionSelection = positions.length > 1;
 
+  // Resolve all available roles for this user and inject them directly
+  const roles = resolveUserRoles(user, positions);
+  const activeRole = position ? position.designation.name : undefined;
+
   const message = requiresPositionSelection
     ? "Login successful. Please select the committee position to continue with."
     : "Login successful";
 
   return next(
     new AppResponse(message, {
-      auth: tokenPayload(signAccessToken(user.id, user.userName, position && toSessionPosition(position))),
+      auth: tokenPayload(
+        signAccessToken(
+          user.id,
+          user.userName,
+          position && toSessionPosition(position),
+          roles,
+          activeRole,
+        ),
+      ),
       name: user.name,
+      roles,
+      role: activeRole ?? null,
       position,
       positions,
       requires_position_selection: requiresPositionSelection,
@@ -207,11 +226,15 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
 
   // Checked against the live list, not trusted from the token.
   const position = (authUser.position && positions.find((candidate) => candidate.id === authUser.position!.cmid)) ?? null;
+  const roles = resolveUserRoles(user, positions);
+  const activeRole = position?.designation.name ?? (authUser.role ?? null);
 
   return next(
     new AppResponse("Session is valid", {
       membership_no: user.userName,
       name: user.name,
+      roles,
+      role: activeRole,
       position,
       positions,
       requires_position_selection: !position && positions.length > 1,
@@ -225,22 +248,34 @@ export const selectPosition = async (req: Request, res: Response, next: NextFunc
   await body("positionId").isInt({ min: 1 }).withMessage("Please choose one of your committee positions.").run(req);
   if (!validate(req, res)) return;
 
-  const { positionId } = req.body
+  const { positionId } = req.body;
 
   const user = await requireActiveUser(req.user!.userId);
-  const position = (await cabinetPositions(user.memberNo)).find((candidate) => candidate.id === positionId);
+  const positions = await cabinetPositions(user.memberNo);
+  const position = positions.find((pos) => pos.id === positionId);
 
   // Same answer for another member's position, so it can't be used to probe.
   if (!position) {
     throw new AppError("That committee position is not available to you.", 403);
   }
 
-  const token = signAccessToken(user.id, user.userName, toSessionPosition(position));
+  const roles = resolveUserRoles(user, positions);
+  const activeRole = position.designation.name;
+
+  const token = signAccessToken(
+    user.id,
+    user.userName,
+    toSessionPosition(position),
+    roles,
+    activeRole,
+  );
   revokeToken(req.user!.jti, req.user!.exp);
 
   return next(
     new AppResponse("Committee position selected successfully", {
       auth: tokenPayload(token),
+      roles,
+      role: activeRole,
       position,
     }),
   );
@@ -280,8 +315,14 @@ export const memberChangePassword = async (req: Request, res: Response, next: Ne
     select: { id: true },
   });
 
-  // Keeps the session's committee position.
-  const token = signAccessToken(user.id, user.userName, req.user!.position);
+  // Keeps the session's committee position and roles.
+  const token = signAccessToken(
+    user.id,
+    user.userName,
+    req.user!.position,
+    req.user!.roles,
+    req.user!.role,
+  );
   revokeToken(req.user!.jti, req.user!.exp);
 
   return next(new AppResponse("Password updated successfully", { auth: tokenPayload(token) }));

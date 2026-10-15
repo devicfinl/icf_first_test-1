@@ -269,3 +269,54 @@ model VayanaSubscriptionEntity {
   @@map("vayana_subscription_entity")
 }
 
+// 1. Departments Catalogue (matches legacy typo org_departmments)
+model OrgDepartment {
+  id            Int      @id
+  title         String   @db.VarChar(255)
+  status        Int      @default(1)
+  directorateId Int      @map("directorate_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@map("org_departmments")
+}
+
+// 2. Directorates Catalogue
+model OrgDirectorate {
+  id          Int    @id @default(autoincrement())
+  directorate String @db.VarChar(200)
+
+  @@map("org_directorates")
+}
+
+// 3. Denormalized Ancestor Lookup Tree
+model OrganisationHierarchy {
+  unitId   Int  @id @map("unit_id")
+  level1   Int? @map("level_1")
+  level2   Int? @map("level_2")
+  level3   Int? @map("level_3")
+  level4   Int? @map("level_4")
+  level5   Int? @map("level_5")
+  level6   Int? @map("level_6")
+  level7   Int? @map("level_7")
+  hpattern Int?
+
+  @@map("organisation_hierarchy")
+}
+
+// 4. Multi-Pattern Level Mapping (matches legacy typo hierachy_mappings)
+model HierarchyMapping {
+  hid    Int    @id @default(autoincrement())
+  hname  String @db.VarChar(25)
+  level0 Int    @default(-1)
+  level1 Int    @default(-1)
+  level2 Int    @default(-1)
+  level3 Int    @default(-1)
+  level4 Int    @default(-1)
+  level5 Int    @default(-1)
+  level6 Int    @default(-1)
+  level7 Int    @default(-1)
+  level8 Int    @default(-1)
+
+  @@map("hierachy_mappings")
+}
+
