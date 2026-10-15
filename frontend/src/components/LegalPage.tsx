@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
-import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import type { RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 
 type Props = {
   title: string;
@@ -18,17 +17,17 @@ type Props = {
  * signed in or out; the back link goes to wherever the reader most likely came from.
  */
 function LegalPage({ title, updated, children }: Props) {
-  const token = useSelector((state: RootState) => state.auth.token);
+  const { session } = useAppContext();
 
   return (
     <main className="min-h-screen bg-cream">
       <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8">
         <Link
-          to={token ? "/dashboard" : "/login"}
+          to={session?.token ? "/dashboard" : "/login"}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          {token ? "Back to dashboard" : "Back to sign in"}
+          {session?.token ? "Back to dashboard" : "Back to sign in"}
         </Link>
 
         <Card className="mt-4 gap-0 overflow-hidden rounded-2xl border-foreground/8 bg-white p-0 shadow-sm">

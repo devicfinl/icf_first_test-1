@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { Outlet, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -10,8 +9,7 @@ import ChangePasswordDrawer from "../account/ChangePasswordDrawer";
 import HierarchyBreadcrumb from "./HierarchyBreadcrumb";
 import Sidebar from "./sidebar/Sidebar";
 import { positionPath, roleLabel } from "../../lib/organisation";
-import { fetchProfile, logoutUser, selectPosition } from "../../thunks/authThunk";
-import type { AppDispatch, RootState } from "../../store/store";
+import { useAppContext } from "../../context/AppContext";
 import type { MemberPosition } from "../../types/auth";
 
 /**
@@ -21,26 +19,32 @@ import type { MemberPosition } from "../../types/auth";
  * switching position and sign-out.
  */
 function AppShell() {
-  const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { profile, position, positions, name, membershipNo, loading } = useSelector((state: RootState) => state.auth);
+  const {
+    session,
+    profile,
+    loading,
+    fetchProfile,
+    logout,
+    selectPosition,
+  } = useAppContext();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // The name, photo and hierarchy come from the profile, which is not in the token.
   useEffect(() => {
-    if (!profile) void dispatch(fetchProfile());
-  }, [dispatch, profile]);
+    if (!profile) void fetchProfile();
+  }, [fetchProfile, profile]);
 
   async function handleSignOut() {
-    await dispatch(logoutUser());
+    await logout();
     toast.success("Signed out");
     navigate("/login", { replace: true });
   }
 
   async function handleSwitchPosition(next: MemberPosition) {
     try {
-      await dispatch(selectPosition(next.id)).unwrap();
+      await selectPosition(next.id);
       toast.success(`Switched to ${roleLabel(next.designation.name, next.organisation.level)}`);
       navigate("/dashboard", { replace: true });
     } catch (error) {
@@ -48,7 +52,7 @@ function AppShell() {
     }
   }
 
-  const path = positionPath(profile?.organisation.hierarchy ?? [], position?.organisation.id);
+  const path = positionPath(profile?.organisation.hierarchy ?? [], session?.position?.organisation.id);
 
   return (
     <div className="min-h-screen bg-[#f7f3ee] text-[#1f1f1f]">
@@ -82,11 +86,11 @@ function AppShell() {
 
         <div className="min-w-0 flex-1">
           <AppHeader
-            name={profile?.name ?? name ?? membershipNo ?? ""}
-            role={roleLabel(position?.designation.name, position?.organisation.level)}
+            name={profile?.name ?? session?.name ?? session?.membershipNo ?? ""}
+            role={roleLabel(session?.position?.designation.name, session?.position?.organisation.level)}
             photoUrl={profile?.photo_url ?? null}
-            positions={positions}
-            currentPositionId={position?.id ?? null}
+            positions={session?.positions ?? []}
+            currentPositionId={session?.position?.id ?? null}
             switching={loading}
             onSwitchPosition={(next) => void handleSwitchPosition(next)}
             onViewProfile={() => navigate("/profile")}

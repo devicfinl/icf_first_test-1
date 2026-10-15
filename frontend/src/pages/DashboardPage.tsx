@@ -1,10 +1,9 @@
-import { useSelector } from "react-redux";
 import { Link, useLocation } from "react-router-dom";
 import { BarChart3, ChevronRight, KeyRound, RefreshCw, Share2, UserPlus, UserRound, type LucideIcon } from "lucide-react";
 
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
 import { roleLabel } from "../lib/organisation";
-import type { RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 
 type Shortcut = { label: string; hint: string; to: string; icon: LucideIcon };
 
@@ -40,9 +39,9 @@ function ShortcutCard({ shortcut }: { shortcut: Shortcut }) {
  */
 function DashboardPage() {
   const location = useLocation();
-  const { profile, name, position } = useSelector((state: RootState) => state.auth);
-  const displayName = profile?.name ?? name ?? "";
-  const role = roleLabel(position?.designation.name, position?.organisation.level);
+  const { session, profile } = useAppContext();
+  const displayName = profile?.name ?? session?.name ?? "";
+  const role = roleLabel(session?.position?.designation.name, session?.position?.organisation.level);
 
   const account: Shortcut[] = [
     { label: "My profile", hint: "Your membership details", to: "/profile", icon: UserRound },
@@ -56,7 +55,7 @@ function DashboardPage() {
         {role && (
           <p className="mt-1 text-[14px] text-[#6b6b6b]">
             {role}
-            {position?.organisation.name ? ` · ${position.organisation.name}` : ""}
+            {session?.position?.organisation.name ? ` · ${session.position.organisation.name}` : ""}
           </p>
         )}
       </section>

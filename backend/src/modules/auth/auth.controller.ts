@@ -180,18 +180,18 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
 
   // One position is applied now; several must be chosen via select-position.
   const position = positions.length === 1 ? positions[0]! : null;
-  const requiresPositionSelection = positions.length > 1;
+
 
   // Resolve all available roles for this user and inject them directly
   const roles = resolveUserRoles(user, positions);
   const activeRole = position ? position.designation.name : undefined;
 
-  const message = requiresPositionSelection
-    ? "Login successful. Please select the committee position to continue with."
-    : "Login successful";
+  // const message = requiresPositionSelection
+  //   ? "Login successful. Please select the committee position to continue with."
+  //   : "Login successful";
 
   return next(
-    new AppResponse(message, {
+    new AppResponse("Login Successfull", {
       auth: tokenPayload(
         signAccessToken(
           user.id,
@@ -206,7 +206,6 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
       role: activeRole ?? null,
       position,
       positions,
-      requires_position_selection: requiresPositionSelection,
     }),
   );
 };
@@ -237,7 +236,6 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
       role: activeRole,
       position,
       positions,
-      requires_position_selection: !position && positions.length > 1,
       expires_at: authUser.exp,
     }),
   );

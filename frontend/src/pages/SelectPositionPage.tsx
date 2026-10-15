@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, MapPin, UserRound, UsersRound } from "lucide-react";
 import { toast } from "sonner";
@@ -15,14 +14,9 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 
-import {
-  fetchPositions,
-  fetchProfile,
-  selectPosition,
-} from "../thunks/authThunk";
 import SessionLoading from "../components/SessionLoading";
 import Loader from "../components/loading-ui/Loader";
-import type { AppDispatch, RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 import type { MemberPosition } from "../types/auth";
 import { toNormalCase } from "../utilities/textCase";
 
@@ -150,44 +144,45 @@ function SelectPositionPage() {
   const navigate = useNavigate();
   // LoginPage passes the member's name along so the greeting shows without waiting on the profile.
   const nameFromLogin = (useLocation().state as { name?: string } | null)?.name ?? null;
-  const dispatch = useDispatch<AppDispatch>();
 
   const {
-    token,
+    session,
     sessionChecked,
-    positions,
-    requiresPositionSelection,
     loading,
     error,
     profile,
-  } = useSelector((state: RootState) => state.auth);
+    fetchPositions,
+    fetchProfile,
+    selectPosition,
+  } = useAppContext();
 
+  const positions = session?.positions ?? [];
   const [chosenId, setChosenId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (token && sessionChecked && positions.length === 0) {
-      void dispatch(fetchPositions());
+    if (session?.token && sessionChecked && positions.length === 0) {
+      void fetchPositions();
     }
-  }, [dispatch, token, sessionChecked, positions.length]);
+  }, [fetchPositions, session?.token, sessionChecked, positions.length]);
 
   useEffect(() => {
     // Only needed when the page was opened without the login state (e.g. a direct visit).
-    if (token && !nameFromLogin && !profile) {
-      void dispatch(fetchProfile());
+    if (session?.token && !nameFromLogin && !profile) {
+      void fetchProfile();
     }
-  }, [dispatch, token, nameFromLogin, profile]);
+  }, [fetchProfile, session?.token, nameFromLogin, profile]);
 
   const selectedId = chosenId ?? positions[0]?.id ?? null;
 
-  if (token && !sessionChecked) {
+  if (session?.token && !sessionChecked) {
     return <SessionLoading />;
   }
 
-  if (!token) {
+  if (!session?.token) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!requiresPositionSelection) {
+  if (!session?.requiresPositionSelection) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -195,11 +190,11 @@ function SelectPositionPage() {
     setChosenId(position.id);
 
     try {
-      await dispatch(selectPosition(position.id)).unwrap();
+      await selectPosition(position.id);
       toast.success(`Signed in as ${toNormalCase(position.designation.name)}`);
       navigate("/dashboard", { replace: true });
     } catch {
-      // Handled in store
+      // Handled in context error state
     }
   }
 

@@ -1,12 +1,10 @@
 import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Box, Button, Card, Flex, Heading, Separator, Text } from "@radix-ui/themes";
 import { KeyRound, LogOut, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
-import { fetchProfile, logoutUser } from "../thunks/authThunk";
-import type { AppDispatch, RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
 import Loader from "../components/loading-ui/Loader";
 
@@ -29,17 +27,24 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
 function Homepage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch<AppDispatch>();
-  const { profile, profileLoading, position, membershipNo, profileError } = useSelector(
-    (state: RootState) => state.auth,
-  );
+  const {
+    session,
+    profile,
+    profileLoading,
+    profileError,
+    fetchProfile,
+    logout,
+  } = useAppContext();
+
+  const membershipNo = session?.membershipNo ?? null;
+  const position = session?.position ?? null;
 
   useEffect(() => {
-    if (!profile) void dispatch(fetchProfile());
-  }, [dispatch, profile]);
+    if (!profile) void fetchProfile();
+  }, [fetchProfile, profile]);
 
   async function handleSignOut() {
-    await dispatch(logoutUser());
+    await logout();
     toast.success("Signed out");
     navigate("/login", { replace: true });
   }
