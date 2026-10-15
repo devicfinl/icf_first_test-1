@@ -97,7 +97,6 @@ async function handleAuth(
 
   req.user = authUser;
   req.auth = authUser;
-  console.log(req.user, 'iiiii')
   checkAccess(requirement, req, res, next);
 }
 
