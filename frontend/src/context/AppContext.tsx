@@ -16,12 +16,13 @@ import {
   setOnExpired,
   setSession,
 } from "../lib/session";
+import queryClient from "../lib/queryClient";
+import { PROFILE_QUERY_KEY } from "../hooks/data/useProfile";
 import type {
   ApiEnvelope,
   ChangePasswordData,
   CurrentSessionData,
   LoginData,
-  MemberProfile,
   PositionsData,
   SelectPositionData,
   Session,
@@ -30,18 +31,14 @@ import type {
 export interface AppContextType {
   session: Session | null;
   sessionChecked: boolean;
-  profile: MemberProfile | null;
   loading: boolean;
-  profileLoading: boolean;
   error: string | null;
-  profileError: string | null;
 
   login: (credentials: { userName: string; password: string }) => Promise<LoginData & { membershipNo: string }>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<CurrentSessionData | null>;
   fetchPositions: () => Promise<PositionsData>;
   selectPosition: (positionId: number) => Promise<SelectPositionData>;
-  fetchProfile: () => Promise<MemberProfile>;
   changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<ChangePasswordData>;
   cancelAccount: (data: { currentPassword: string; confirm: true }) => Promise<void>;
   clearError: () => void;
@@ -59,21 +56,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   });
   const [sessionChecked, setSessionChecked] = useState<boolean>(!getSession());
-  const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [profileLoading, setProfileLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
 
   const restoredRef = useRef(false);
 
   const handleSignedOut = useCallback(() => {
     setSessionState(null);
     setSessionChecked(true);
-    setProfile(null);
     setLoading(false);
-    setProfileLoading(false);
-    setProfileError(null);
+    queryClient.removeQueries({ queryKey: PROFILE_QUERY_KEY });
   }, []);
 
   const restoreSession = useCallback(async (): Promise<CurrentSessionData | null> => {
@@ -129,7 +121,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (newSession) {
         setSessionState(newSession);
         setSessionChecked(true);
-        setProfile((prev) => (prev?.membership_no === newSession.membershipNo ? prev : null));
+        void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       } else {
         handleSignedOut();
         setError(null);
@@ -214,6 +206,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
 
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
+
       return result;
     } catch (err) {
       const msg = apiErrorMessage(err, "Could not select that position");
@@ -221,23 +215,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       throw msg;
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const fetchProfile = useCallback(async (): Promise<MemberProfile> => {
-    try {
-      setProfileLoading(true);
-      setProfileError(null);
-      const { data } = await api.get<ApiEnvelope<{ profile: MemberProfile }>>("/member/profile");
-      const result = unwrap(data).profile;
-      setProfile(result);
-      return result;
-    } catch (err) {
-      const msg = apiErrorMessage(err, "Could not load your profile");
-      setProfileError(msg);
-      throw msg;
-    } finally {
-      setProfileLoading(false);
     }
   }, []);
 
@@ -310,17 +287,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     () => ({
       session,
       sessionChecked,
-      profile,
       loading,
-      profileLoading,
       error,
-      profileError,
       login,
       logout,
       restoreSession,
       fetchPositions,
       selectPosition,
-      fetchProfile,
       changePassword,
       cancelAccount,
       clearError,
@@ -328,17 +301,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [
       session,
       sessionChecked,
-      profile,
       loading,
-      profileLoading,
       error,
-      profileError,
       login,
       logout,
       restoreSession,
       fetchPositions,
       selectPosition,
-      fetchProfile,
       changePassword,
       cancelAccount,
       clearError,

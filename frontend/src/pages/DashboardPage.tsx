@@ -4,6 +4,7 @@ import { BarChart3, ChevronRight, KeyRound, RefreshCw, Share2, UserPlus, UserRou
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
 import { roleLabel } from "../lib/organisation";
 import { useAppContext } from "../context/AppContext";
+import { useProfile } from "../hooks/data/useProfile";
 
 type Shortcut = { label: string; hint: string; to: string; icon: LucideIcon };
 
@@ -39,7 +40,8 @@ function ShortcutCard({ shortcut }: { shortcut: Shortcut }) {
  */
 function DashboardPage() {
   const location = useLocation();
-  const { session, profile } = useAppContext();
+  const { session } = useAppContext();
+  const { profile } = useProfile();
   const displayName = profile?.name ?? session?.name ?? "";
   const role = roleLabel(session?.position?.designation.name, session?.position?.organisation.level);
 

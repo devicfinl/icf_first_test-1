@@ -17,6 +17,7 @@ import { Spinner } from "@/components/ui/spinner";
 import SessionLoading from "../components/SessionLoading";
 import Loader from "../components/loading-ui/Loader";
 import { useAppContext } from "../context/AppContext";
+import { useProfile } from "../hooks/data/useProfile";
 import type { MemberPosition } from "../types/auth";
 import { toNormalCase } from "../utilities/textCase";
 
@@ -150,11 +151,11 @@ function SelectPositionPage() {
     sessionChecked,
     loading,
     error,
-    profile,
     fetchPositions,
-    fetchProfile,
     selectPosition,
   } = useAppContext();
+
+  const { profile } = useProfile({ enabled: !nameFromLogin });
 
   const positions = session?.positions ?? [];
   const [chosenId, setChosenId] = useState<number | null>(null);
@@ -164,13 +165,6 @@ function SelectPositionPage() {
       void fetchPositions();
     }
   }, [fetchPositions, session?.token, sessionChecked, positions.length]);
-
-  useEffect(() => {
-    // Only needed when the page was opened without the login state (e.g. a direct visit).
-    if (session?.token && !nameFromLogin && !profile) {
-      void fetchProfile();
-    }
-  }, [fetchProfile, session?.token, nameFromLogin, profile]);
 
   const selectedId = chosenId ?? positions[0]?.id ?? null;
 

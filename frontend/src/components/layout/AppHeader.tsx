@@ -1,46 +1,59 @@
 import { useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { Check, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
-import { roleLabel } from "../../lib/organisation";
+import HierarchyBreadcrumb from "./HierarchyBreadcrumb";
+import { positionPath, roleLabel } from "../../lib/organisation";
 import type { MemberPosition } from "../../types/auth";
+import useProfile from "@/hooks/data/useProfile";
+import { useAppContext } from "@/context/AppContext";
 
 type Props = {
-  name: string;
-  /** e.g. "Unit Secretary"; empty when the session has no position. */
-  role: string;
-  photoUrl: string | null;
-  positions: MemberPosition[];
-  currentPositionId: number | null;
-  /** True while a position switch is in flight. */
-  switching: boolean;
-  onSwitchPosition: (position: MemberPosition) => void;
-  onViewProfile: () => void;
-  onSignOut: () => void;
   /** Opens the menu drawer on phone and tablet widths. */
   onOpenMenu: () => void;
-  /** Shown on the left, e.g. the hierarchy breadcrumb. */
+  /** Shown on the left, e.g. custom breadcrumb or override. */
   leading?: ReactNode;
 };
 
 /** The header card: who is signed in and the role they are acting as, with a hover box to switch it. */
-function AppHeader({
-  name,
-  role,
-  photoUrl,
-  positions,
-  currentPositionId,
-  switching,
-  onSwitchPosition,
-  onViewProfile,
-  onSignOut,
-  onOpenMenu,
-  leading,
-}: Props) {
+function AppHeader({ onOpenMenu, leading }: Props) {
+  const navigate = useNavigate();
   // Controlled so a tap opens it too: hover cards ignore touch.
   const [open, setOpen] = useState(false);
+  const { profile } = useProfile();
+  const { session, loading, logout, selectPosition } = useAppContext();
+
+  const positions = session?.positions ?? [];
+  const currentPositionId = session?.position?.id ?? null;
+  const switching = loading;
+
+  const name = profile?.name ?? "";
+  const role = roleLabel(session?.position?.designation.name, session?.position?.organisation.level);
+  const path = positionPath(profile?.organisation.hierarchy ?? [], session?.position?.organisation.id);
+
+  async function handleSignOut() {
+    await logout();
+    toast.success("Signed out");
+    navigate("/login", { replace: true });
+  }
+
+  async function handleSwitchPosition(next: MemberPosition) {
+    try {
+      await selectPosition(next.id);
+      toast.success(`Switched to ${roleLabel(next.designation.name, next.organisation.level)}`);
+      navigate("/dashboard", { replace: true });
+    } catch (error) {
+      toast.error(typeof error === "string" ? error : "Could not switch position");
+    }
+  }
+
+  function handleViewProfile() {
+    navigate("/profile");
+  }
 
   function run(action: () => void) {
     setOpen(false);
@@ -57,7 +70,9 @@ function AppHeader({
       >
         <Menu className="size-5" />
       </button>
-      <div className="min-w-0 flex-1">{leading}</div>
+      <div className="min-w-0 flex-1">
+        {leading ?? (path.length > 0 && <HierarchyBreadcrumb path={path} />)}
+      </div>
 
       <HoverCard open={open} onOpenChange={setOpen} openDelay={100} closeDelay={150}>
         <HoverCardTrigger asChild>
@@ -69,7 +84,7 @@ function AppHeader({
             className="flex shrink-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-white/60"
           >
             <Avatar className="size-11">
-              <AvatarImage src={photoUrl ?? undefined} alt="" />
+              <AvatarImage src={profile?.photo_url ?? undefined} alt="" />
               <AvatarFallback className="bg-navy text-white">{name.trim().charAt(0).toUpperCase()}</AvatarFallback>
             </Avatar>
             {/* Phones keep just the avatar, leaving room for the hierarchy. */}
@@ -96,7 +111,7 @@ function AppHeader({
                         type="button"
                         role="menuitem"
                         disabled={current || switching}
-                        onClick={() => run(() => onSwitchPosition(position))}
+                        onClick={() => run(() => void handleSwitchPosition(position))}
                         className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-[#f3ebe2] disabled:cursor-default disabled:hover:bg-transparent"
                       >
                         <div className="min-w-0 flex-1">
@@ -120,7 +135,7 @@ function AppHeader({
           <button
             type="button"
             role="menuitem"
-            onClick={() => run(onViewProfile)}
+            onClick={() => run(handleViewProfile)}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-[#f3ebe2]"
           >
             <UserRound className="size-4" />
@@ -129,7 +144,7 @@ function AppHeader({
           <button
             type="button"
             role="menuitem"
-            onClick={() => run(onSignOut)}
+            onClick={() => run(() => void handleSignOut())}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-red-600 hover:bg-red-50"
           >
             <LogOut className="size-4" />

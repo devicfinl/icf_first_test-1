@@ -1,10 +1,10 @@
-import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Box, Button, Card, Flex, Heading, Separator, Text } from "@radix-ui/themes";
 import { KeyRound, LogOut, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAppContext } from "../context/AppContext";
+import { useProfile } from "../hooks/data/useProfile";
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
 import Loader from "../components/loading-ui/Loader";
 
@@ -27,21 +27,11 @@ function Detail({ label, value }: { label: string; value: string | null | undefi
 function Homepage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    session,
-    profile,
-    profileLoading,
-    profileError,
-    fetchProfile,
-    logout,
-  } = useAppContext();
+  const { session, logout } = useAppContext();
+  const { profile, profileLoading, profileError } = useProfile();
 
   const membershipNo = session?.membershipNo ?? null;
   const position = session?.position ?? null;
-
-  useEffect(() => {
-    if (!profile) void fetchProfile();
-  }, [fetchProfile, profile]);
 
   async function handleSignOut() {
     await logout();
