@@ -157,21 +157,33 @@ async function scopeFor(req: Request, filters: Filters) {
 export const analysisSummary = async (req: Request, res: Response) => {
   try {
     const filters = parse(analysisQuery, req.query);
-    const { ids, year, years, scope } = await scopeFor(req, filters);
+    const { place, ids, year, years, scope } = await scopeFor(req, filters);
 
-    const totals = { subscriptions: 0, new: 0, renewals: 0, paid: 0, unpaid: 0 };
+    // The place's print + digital target from Set Target, as on Analytics: a draft is not given
+    // yet, except International's own (it sets its own). 0 when none.
+    const targetRow = (await targetRows(prisma, "setToOrg", [place.id])).get(place.id);
+    const target =
+      targetRow && (targetRow.status === "Active" || targetRow.setByOrg === place.id) ? targetRow.print + targetRow.digital : 0;
+
+    // renewable: last year's subscriptions, which this year's renewals are counted against.
+    const totals = { subscriptions: 0, new: 0, renewals: 0, renewable: 0, paid: 0, unpaid: 0 };
     const amounts = new Map<string, { currency: string; total: number; received: number }>();
 
     if (year !== null) {
       const where = whereFor(filters, ids, year);
-      const rows = await prisma.$queryRawUnsafe<
-        { registration_type: string; cash_received: string | null; currency: string | null; count: unknown; amount: unknown }[]
-      >(
-        `SELECT d.registration_type, d.cash_received, d.currency, COUNT(*) AS count, SUM(d.amount) AS amount
-         ${FROM} WHERE ${where.sql}
-         GROUP BY d.registration_type, d.cash_received, d.currency`,
-        ...where.values,
-      );
+      const lastYear = whereFor(filters, ids, year - 1, { withRange: false });
+      const [rows, previous] = await Promise.all([
+        prisma.$queryRawUnsafe<
+          { registration_type: string; cash_received: string | null; currency: string | null; count: unknown; amount: unknown }[]
+        >(
+          `SELECT d.registration_type, d.cash_received, d.currency, COUNT(*) AS count, SUM(d.amount) AS amount
+           ${FROM} WHERE ${where.sql}
+           GROUP BY d.registration_type, d.cash_received, d.currency`,
+          ...where.values,
+        ),
+        prisma.$queryRawUnsafe<{ count: unknown }[]>(`SELECT COUNT(*) AS count ${FROM} WHERE ${lastYear.sql}`, ...lastYear.values),
+      ]);
+      totals.renewable = Number(previous[0]?.count ?? 0);
       for (const row of rows) {
         const count = Number(row.count);
         const amount = Number(row.amount ?? 0);
@@ -194,6 +206,7 @@ export const analysisSummary = async (req: Request, res: Response) => {
       year,
       years,
       scope,
+      target,
       totals,
       amounts: [...amounts.values()].map((money) => ({ ...money, pending: money.total - money.received })),
     });

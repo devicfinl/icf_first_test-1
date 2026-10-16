@@ -101,7 +101,15 @@ export type PvAnalytics = {
   };
   totals: PvProgress;
   by_mode: Record<SubscriptionMode, number>;
-  amounts: { currency: string; total: number; received: number }[];
+  /** New and renewed subscriptions added on each day (YYYY-MM-DD, earliest first). */
+  by_day: { day: string; new: number; renewals: number }[];
+  /** Per currency, with the amount added on each day (YYYY-MM-DD, earliest first). */
+  amounts: {
+    currency: string;
+    total: number;
+    received: number;
+    by_day: { day: string; total: number; received: number }[];
+  }[];
   places: (OrgPlace & PvProgress)[];
 };
 

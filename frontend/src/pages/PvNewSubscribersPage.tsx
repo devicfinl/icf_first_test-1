@@ -76,6 +76,9 @@ function PvNewSubscribersPage() {
 
         {/* A Unit leader has no places below, so no dropdowns show. */}
         {scope && <HierarchyFilter rootId={scope.top_id} path={below} onChange={(orgId) => update({ org_id: orgId })} />}
+
+        {/* Each count against its base, with a progress line, in the same section as the filters. */}
+        {data && <SummaryCards summary={data} against inset />}
       </section>
 
       {shown?.error && (
@@ -84,7 +87,6 @@ function PvNewSubscribersPage() {
         </Alert>
       )}
 
-      {data && <SummaryCards summary={data} />}
 
       <SubscriptionsTable
         key={refreshKey}

@@ -168,7 +168,7 @@ function fakeQueryRaw(sql: string, ...values: any[]) {
   if (sql.includes("GROUP BY")) {
     return ofYear.filter(approved).map((row) => ({
       unit_id: row.unit_id, registration_type: row.type, subscription_mode: row.mode,
-      currency: "OMR", cash_received: row.cash, count: 1n, amount: row.amount,
+      currency: "OMR", cash_received: row.cash, day: row.created.slice(0, 10), count: 1n, amount: row.amount,
     }));
   }
 
@@ -588,7 +588,19 @@ test("analytics: work progress for the leader's place, approved subscriptions on
     membership: 16, total_units: 2, target: 10, target_print: 4, target_digital: 6, progress: 3 / 10,
   });
   assert.deepEqual(data.by_mode, { Print: 1, Digital: 1, "Print&Digital": 1 });
-  assert.deepEqual(data.amounts, [{ currency: "OMR", total: 14.5, received: 9.5 }]);
+  assert.deepEqual(data.by_day, [
+    { day: "2027-01-03", new: 1, renewals: 0 },
+    { day: "2027-01-04", new: 0, renewals: 1 },
+    { day: "2027-01-05", new: 1, renewals: 0 },
+  ]);
+  assert.deepEqual(data.amounts, [{
+    currency: "OMR", total: 14.5, received: 9.5,
+    by_day: [
+      { day: "2027-01-03", total: 3.5, received: 3.5 },
+      { day: "2027-01-04", total: 6, received: 6 },
+      { day: "2027-01-05", total: 5, received: 0 },
+    ],
+  }]);
   // Unit B's target is still a draft, so it has none yet.
   assert.deepEqual(
     data.places.map((place: any) => [

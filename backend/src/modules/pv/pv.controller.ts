@@ -1213,6 +1213,8 @@ type AnalyticsRow = {
   subscription_mode: SubscriptionMode;
   currency: string | null;
   cash_received: string | null;
+  /** The day it was added, as YYYY-MM-DD. */
+  day: string | null;
   count: bigint | number;
   amount: unknown;
 };
@@ -1295,10 +1297,10 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
         ? []
         : prisma.$queryRawUnsafe<AnalyticsRow[]>(
             `SELECT unit_id, registration_type, subscription_mode, currency, cash_received,
-                    COUNT(*) AS count, SUM(amount) AS amount
+                    DATE_FORMAT(created_at, '%Y-%m-%d') AS day, COUNT(*) AS count, SUM(amount) AS amount
              FROM pv_subscription_details
              WHERE unit_id IN (${placeholders}) AND subscription_year = ? AND approval_status = 'APPROVED'
-             GROUP BY unit_id, registration_type, subscription_mode, currency, cash_received`,
+             GROUP BY unit_id, registration_type, subscription_mode, currency, cash_received, day`,
             ...placeIds,
             year,
           ),
@@ -1337,7 +1339,11 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
     };
 
     const byMode: Record<SubscriptionMode, number> = { Print: 0, Digital: 0, "Print&Digital": 0 };
-    const amounts = new Map<string, { currency: string; total: number; received: number }>();
+    // Per currency: the amount and the amount received, in all and on each day it was added.
+    type DayAmount = { day: string; total: number; received: number };
+    const amounts = new Map<string, { currency: string; total: number; received: number; days: Map<string, DayAmount> }>();
+    // New and renewed subscriptions of the whole report on each day they were added.
+    const countsByDay = new Map<string, { day: string; new: number; renewals: number }>();
 
     for (const row of rows) {
       const count = Number(row.count);
@@ -1353,11 +1359,23 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
         else progress.print += count;
       });
       if (row.subscription_mode in byMode) byMode[row.subscription_mode] += count;
+      if (row.day) {
+        const day = countsByDay.get(row.day) ?? { day: row.day, new: 0, renewals: 0 };
+        if (row.registration_type === "RENEW") day.renewals += count;
+        else day.new += count;
+        countsByDay.set(row.day, day);
+      }
 
       const currency = row.currency?.trim() || "—";
-      const money = amounts.get(currency) ?? { currency, total: 0, received: 0 };
+      const money = amounts.get(currency) ?? { currency, total: 0, received: 0, days: new Map() };
       money.total += amount;
       if (paid) money.received += amount;
+      if (row.day) {
+        const day = money.days.get(row.day) ?? { day: row.day, total: 0, received: 0 };
+        day.total += amount;
+        if (paid) day.received += amount;
+        money.days.set(row.day, day);
+      }
       amounts.set(currency, money);
     }
     for (const row of lastYear) {
@@ -1389,8 +1407,12 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
         top_id: leader.organisation.id,
       },
       totals: withTarget(totals, given(rootId)),
+      by_day: [...countsByDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
       by_mode: byMode,
-      amounts: [...amounts.values()],
+      amounts: [...amounts.values()].map(({ days, ...money }) => ({
+        ...money,
+        by_day: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+      })),
       places: rowsBelow,
     });
   } catch (error) {
