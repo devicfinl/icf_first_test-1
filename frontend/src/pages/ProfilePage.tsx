@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -38,11 +36,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { InfoCard, InfoRow, ProfileDetailsSkeleton, StatusDot } from "@/components/ProfileDetails";
 
-import { fetchProfile } from "../thunks/authThunk";
 import { flagFor } from "../lib/flags";
 import { roleLabel } from "../lib/organisation";
-import type { AppDispatch, RootState } from "../store/store";
 import { CHANGE_PASSWORD_DRAWER, withDrawer } from "../lib/drawers";
+import { useAppContext } from "../context/AppContext";
+import { useProfile } from "../hooks/data/useProfile";
 
 /**
  * The legacy database leaves most columns blank, so a date can arrive as an ISO string, as
@@ -68,14 +66,11 @@ const hasValue = (values: (string | number | boolean | null | undefined)[]) =>
 function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch<AppDispatch>();
-  const { profile, profileLoading, profileError, position, membershipNo } = useSelector(
-    (state: RootState) => state.auth,
-  );
+  const { session } = useAppContext();
+  const { profile, profileLoading, profileError } = useProfile();
 
-  useEffect(() => {
-    if (!profile) void dispatch(fetchProfile());
-  }, [dispatch, profile]);
+  const membershipNo = session?.membershipNo ?? null;
+  const position = session?.position ?? null;
 
   const name = profile?.name ?? null;
   const initial = name?.trim().charAt(0).toUpperCase();

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -15,7 +14,7 @@ import { apiErrorMessage } from "../api/axios";
 import { approvePublicRegistration, fetchPublicRegistrations, rejectPublicRegistration } from "../api/pv";
 import { formatAmount, formatDate, formatMobile, modeLabel } from "../lib/pv";
 import { clickableRowClass, onRowClick, subscriberPath } from "../lib/rowLink";
-import type { RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 import type { PublicRegistration, PublicRegistrationPage, PublicStatus } from "../types/pv";
 import Loader from "../components/loading-ui/Loader";
 
@@ -33,7 +32,7 @@ const TONE = { PENDING: "amber", APPROVED: "green", REJECTED: "red" } as const;
  */
 function PvPublicPage() {
   const navigate = useNavigate();
-  const position = useSelector((state: RootState) => state.auth.position);
+  const { session } = useAppContext();
 
   const [status, setStatus] = useState<PublicStatus>("PENDING");
   const [page, setPage] = useState(1);
@@ -100,7 +99,7 @@ function PvPublicPage() {
     <main className="space-y-5">
       <PvPageHeader title="Public Subscription" subtitle="Registrations from your public link" />
 
-      {position && <PublicLinkCard place={position.organisation} />}
+      {session?.position && <PublicLinkCard place={session.position.organisation} />}
 
       {error && (
         <Alert variant="destructive" className="rounded-xl">

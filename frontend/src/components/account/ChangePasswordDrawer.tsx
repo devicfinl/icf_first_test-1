@@ -1,6 +1,5 @@
 import * as Form from "@radix-ui/react-form";
 import { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { useSearchParams } from "react-router-dom";
 import { Text } from "@radix-ui/themes";
 import { toast } from "sonner";
@@ -15,12 +14,10 @@ import PasswordEye from "../PasswordEye";
 import PasswordStrength from "../PasswordStrength";
 import { CHANGE_PASSWORD_DRAWER, DRAWER_PARAM } from "../../lib/drawers";
 import { changePasswordSchema, type ChangePasswordFormData } from "../../utilities/validation";
-import { changePassword } from "../../thunks/authThunk";
-import type { AppDispatch, RootState } from "../../store/store";
+import { useAppContext } from "../../context/AppContext";
 
 function ChangePasswordForm({ onDone }: { onDone: () => void }) {
-  const dispatch = useDispatch<AppDispatch>();
-  const { loading, error } = useSelector((state: RootState) => state.auth);
+  const { loading, error, changePassword } = useAppContext();
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -36,13 +33,13 @@ function ChangePasswordForm({ onDone }: { onDone: () => void }) {
 
   async function onSubmit(data: ChangePasswordFormData) {
     try {
-      // The server swaps our token for a new one here, which the thunk stores; the session
+      // The server swaps our token for a new one here, which the context stores; the session
       // survives the change on this device while the old token stops working everywhere else.
-      await dispatch(changePassword(data)).unwrap();
+      await changePassword(data);
       toast.success("Password updated");
       onDone();
     } catch {
-      // The rejected message is already in the store and rendered below.
+      // The rejected message is already in context state and rendered below.
     }
   }
 

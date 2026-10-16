@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --experimental-test-module-mocks --test 'src/**/*.test.ts'",
     "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
     "db:studio": "prisma studio",
     "db:migrate:pv-targets": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-create-new-table.sql vayana_subscription_entity",
     "db:migrate:pv-campaigns": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-add-campaign.sql vayana_subscription_entity_new",

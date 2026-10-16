@@ -1,6 +1,5 @@
 import * as Form from "@radix-ui/react-form";
 import { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Text } from "@radix-ui/themes";
 import { toast } from "sonner";
@@ -12,19 +11,20 @@ import { FormInput } from "../components/FormInput";
 import SubmitButton from "../components/SubmitButton";
 import PasswordEye from "../components/PasswordEye";
 import { loginSchema, type LoginFormData } from "../utilities/validation";
-import { loginUser } from "../thunks/authThunk";
-import { clearError } from "../slices/authSlice";
-import type { AppDispatch, RootState } from "../store/store";
+import { useAppContext } from "../context/AppContext";
 
 function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   // Where to go after signing in, when a page sent the member here (e.g. /deleteAccount).
   const from = (location.state as { from?: string } | null)?.from;
-  const dispatch = useDispatch<AppDispatch>();
-  const { loading, error, token, requiresPositionSelection } = useSelector(
-    (state: RootState) => state.auth,
-  );
+  const {
+    session,
+    loading,
+    error,
+    login,
+    clearError,
+  } = useAppContext();
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -36,28 +36,28 @@ function LoginPage() {
 
   // A stale message from a previous visit shouldn't greet the next one.
   useEffect(() => {
-    dispatch(clearError());
-  }, [dispatch]);
+    clearError();
+  }, [clearError]);
 
   // Already signed in (a refresh, or the back button after signing in).
-  if (token) {
-    return <Navigate to={requiresPositionSelection ? "/select-position" : (from ?? "/")} replace />;
+  if (session?.token) {
+    return <Navigate to={session.requiresPositionSelection ? "/select-position" : (from ?? "/")} replace />;
   }
 
   async function onSubmit(data: LoginFormData) {
     try {
-      const result = await dispatch(loginUser(data)).unwrap();
+      const result = await login(data);
       toast.success("Signed in");
 
       // Several cabinet positions means the session has no committee context yet, and the member
       // has to pick one before anything else loads.
-      if (result.requires_position_selection) {
+      if (result.positions.length > 1) {
         navigate("/select-position", { replace: true, state: { name: result.name } });
       } else {
         navigate(from ?? "/dashboard", { replace: true });
       }
     } catch {
-      // The rejected message is already in the store and rendered below.
+      // The rejected message is already in context state and rendered below.
     }
   }
 
