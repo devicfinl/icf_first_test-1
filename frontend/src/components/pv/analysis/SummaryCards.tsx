@@ -1,3 +1,5 @@
+import { CircleCheck, Clock, RefreshCw, UserPlus, Users, Wallet, type LucideIcon } from "lucide-react";
+
 import { CountUp, GrowBar } from "../Animated";
 import { formatAmount, formatPercent } from "../../../lib/pv";
 import type { AnalysisSummary } from "../../../types/pvAnalysis";
@@ -9,8 +11,10 @@ function Card({
   hint,
   of,
   inset,
+  icon,
 }: {
   inset?: boolean;
+  icon: LucideIcon;
   label: string;
   value: number;
   hint?: string;
@@ -19,7 +23,7 @@ function Card({
   const share = of && of.value > 0 ? value / of.value : null;
   return (
     <div className={`${inset ? CARD_INSET : CARD} px-4 py-3`}>
-      <p className="text-[12px] text-[#6b6b6b]">{label}</p>
+      <CardLabel icon={icon}>{label}</CardLabel>
       <p className="mt-1 text-[24px] font-semibold text-navy">
         <CountUp value={value} />
         {of && (
@@ -40,6 +44,18 @@ function Card({
         hint && <p className="text-[12px] text-[#6b6b6b]">{hint}</p>
       )}
     </div>
+  );
+}
+
+/** A card's name with its icon in a small clay-tinted circle. */
+function CardLabel({ icon: Icon, children }: { icon: LucideIcon; children: string }) {
+  return (
+    <p className="flex items-center gap-2 text-[12px] text-[#6b6b6b]">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#f6efe8]">
+        <Icon className="size-3.5 text-clay" aria-hidden />
+      </span>
+      {children}
+    </p>
   );
 }
 
@@ -79,9 +95,16 @@ function SummaryCards({
 
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-      <Card inset={inset} label="Total" value={totals.subscriptions} of={against ? { value: target, label: "target", color: LINE.total } : undefined} />
       <Card
         inset={inset}
+        icon={Users}
+        label="Total"
+        value={totals.subscriptions}
+        of={against ? { value: target, label: "target", color: LINE.total } : undefined}
+      />
+      <Card
+        inset={inset}
+        icon={UserPlus}
         label="New"
         value={totals.new}
         hint={share(totals.new, totals.subscriptions)}
@@ -89,6 +112,7 @@ function SummaryCards({
       />
       <Card
         inset={inset}
+        icon={RefreshCw}
         label="Renewal"
         value={totals.renewals}
         hint={share(totals.renewals, totals.subscriptions)}
@@ -96,6 +120,7 @@ function SummaryCards({
       />
       <Card
         inset={inset}
+        icon={CircleCheck}
         label="Paid"
         value={totals.paid}
         hint={share(totals.paid, totals.subscriptions)}
@@ -103,13 +128,14 @@ function SummaryCards({
       />
       <Card
         inset={inset}
+        icon={Clock}
         label="Not paid"
         value={totals.unpaid}
         hint={share(totals.unpaid, totals.subscriptions)}
         of={against ? { value: totals.subscriptions, label: "total", color: LINE.unpaid } : undefined}
       />
       <div className={`${inset ? CARD_INSET : CARD} px-4 py-3`}>
-        <p className="text-[12px] text-[#6b6b6b]">Amount collected</p>
+        <CardLabel icon={Wallet}>Amount collected</CardLabel>
         {amounts.length === 0 ? (
           <p className="mt-1 text-[24px] font-semibold text-[#999]">—</p>
         ) : (

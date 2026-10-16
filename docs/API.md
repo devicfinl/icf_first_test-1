@@ -304,6 +304,16 @@ when their latest subscription is outside the leader's branch (403), when they a
 the open year (400), or when the subscriber does not exist (400). The 201 answer has
 `"registration_type": "RENEW"`.
 
+### `GET /api/pv/members/search?q=`
+
+ICF members in the leader's branch whose membership number starts with `q` or whose name contains
+it (at least 2 characters), for the membership number dropdown; up to 20, `more` when there are
+others. `400` when `q` is shorter.
+
+```json
+{ "members": [{ "membership_no": "OM0001234", "name": "Nasser Ali", "active": true, "unit": "Bousher Unit B" }], "more": false }
+```
+
 ### `GET /api/pv/members/lookup?membership_no=`
 
 For a new subscriber who is an ICF member: their membership record (`OM0001234`, any case), to fill

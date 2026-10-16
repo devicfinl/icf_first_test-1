@@ -8,6 +8,7 @@ import {
   listRegistrations,
   listRenewals,
   lookupMember,
+  searchMembers,
   lookupSubscribers,
   publicChildren,
   publicContext,
@@ -39,6 +40,7 @@ pvRouter.get("/analysis/subscriptions", requireAuth, analysisSubscriptions);
 pvRouter.get("/analysis/places", requireAuth, analysisPlaces);
 pvRouter.put("/targets", requireAuth, saveTargets);
 pvRouter.get("/subscribers/lookup", requireAuth, lookupSubscribers);
+pvRouter.get("/members/search", requireAuth, searchMembers);
 pvRouter.get("/members/lookup", requireAuth, lookupMember);
 pvRouter.get("/renewals", requireAuth, listRenewals);
 pvRouter.get(

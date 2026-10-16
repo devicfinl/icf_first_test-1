@@ -172,7 +172,12 @@ function PvAnalyticsPage() {
                 </Reveal>
               </div>
               <Reveal order={2}>
-                <PlaceProgressList places={shownAnalytics.data.places} onOpen={(place) => open(place.id)} />
+                <PlaceProgressList
+                  places={shownAnalytics.data.places}
+                  onOpen={(place) => open(place.id)}
+                  placeName={shownAnalytics.data.scope.place.name}
+                  year={shownAnalytics.data.year}
+                />
               </Reveal>
             </div>
           )}

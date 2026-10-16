@@ -292,6 +292,18 @@ const fakePrisma: any = {
     },
     groupBy: async ({ where }: any) =>
       where.unitId.in.filter((id: number) => MEMBERS[id]).map((id: number) => ({ unitId: id, _count: { _all: MEMBERS[id] } })),
+    // Member search: in the units given, number starting with or name containing the text.
+    findMany: async ({ where, take }: any) => {
+      const [byNo, byName] = where.OR;
+      return ICF_MEMBERS.filter(
+        (member) =>
+          where.unitId.in.includes(member.unitId) &&
+          (member.membershipNo.startsWith(byNo.membershipNo.startsWith) ||
+            member.memberName.toLowerCase().includes(byName.memberName.contains.toLowerCase())),
+      )
+        .sort((a, b) => a.membershipNo.localeCompare(b.membershipNo))
+        .slice(0, take);
+    },
   },
   // Tagged template: (strings, ...values). An INSERT is recorded; an UPDATE (approve / reject)
   // changes the public row in SUBS, whose subscriber_id is the last value.
@@ -723,6 +735,22 @@ test("lookup: by name, and everyone in a chosen place without a search", async (
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: {} })).statusCode, 400);
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { q: "a" } })).statusCode, 400);
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { org_id: 61 } })).statusCode, 403);
+});
+
+test("member search: by number or name, only inside the leader's branch", async () => {
+  const leader = PEOPLE.divisionLeader!;
+  const search = (q: string) => call(controller.searchMembers, authFor(leader), { query: { q } });
+
+  const byNumber = await search("om000");
+  assert.equal(byNumber.statusCode, 200, byNumber.body.message);
+  // Faisal (OM0009999) is in Sohar (82), outside Bousher.
+  assert.deepEqual(byNumber.body.data, {
+    members: [{ membership_no: "OM0001234", name: "Nasser Ali", active: true, unit: "Bousher Unit B" }],
+    more: false,
+  });
+  assert.deepEqual((await search("nass")).body.data.members.map((m: any) => m.membership_no), ["OM0001234"]);
+  assert.deepEqual((await search("faisal")).body.data.members, []);
+  assert.equal((await search("o")).statusCode, 400);
 });
 
 test("member lookup: an ICF member in the branch fills the form; others are refused", async () => {

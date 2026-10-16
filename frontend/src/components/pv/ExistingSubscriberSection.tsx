@@ -1,20 +1,18 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useWatch } from "react-hook-form";
-import { CircleCheck, Search } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 import FormSection from "../form/FormSection";
-import { apiErrorMessage } from "../../api/axios";
 import { lookupSubscribers } from "../../api/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import { EMPTY_SUBSCRIBER_FORM, formFromExisting, modeLabel } from "../../lib/pv";
-import type { ExistingSubscriber, OrgPlace, SubscriberLookup } from "../../types/pv";
+import type { ExistingSubscriber, OrgPlace } from "../../types/pv";
 import ConfirmDialog from "../ConfirmDialog";
+import YesNoSwitch from "./YesNoSwitch";
+import SearchCombobox from "./SearchCombobox";
 import HierarchyFilter from "./analysis/HierarchyFilter";
 
 const initials = (name: string) =>
@@ -29,6 +27,33 @@ const addressLine = ({ previous }: ExistingSubscriber) =>
   [previous.shop_name, previous.building_name, previous.street, previous.area, previous.province]
     .filter(Boolean)
     .join(", ");
+
+/** One subscriber in the dropdown (and the chosen one under it). */
+function SubscriberOption({ subscriber, year }: { subscriber: ExistingSubscriber; year: number | null }) {
+  const blocked = subscriber.already_registered_this_year;
+  return (
+    <div className="flex gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#f3ebe2] text-[12px] font-semibold text-navy">
+        {initials(subscriber.name)}
+      </span>
+      <div className="min-w-0 space-y-0.5">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-navy">{subscriber.name}</span>
+          <span className="rounded-full bg-[#f3ebe2] px-2 py-0.5 text-[11px] text-[#555]">
+            {modeLabel(subscriber.previous.subscription_mode)} {subscriber.previous.year ?? ""}
+          </span>
+        </p>
+        <p className="text-[#555]">
+          No. {subscriber.subscriber_id}
+          {subscriber.ledger_no ? ` · Ledger ${subscriber.ledger_no}` : ""}
+          {subscriber.mobile ? ` · +${subscriber.mobile_country ?? ""} ${subscriber.mobile}` : ""}
+        </p>
+        <p className="text-[#6b6b6b]">{[subscriber.previous.unit.name, addressLine(subscriber)].filter(Boolean).join(" — ")}</p>
+        {blocked && <p className="font-medium text-red-600">Already registered{year ? ` for ${year}` : " this year"}.</p>}
+      </div>
+    </div>
+  );
+}
 
 /**
  * "Is Existing Subscriber". Yes shows a search by name, mobile, address, ledger or subscriber
@@ -61,9 +86,10 @@ function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
   const [query, setQuery] = useState("");
   // The places chosen to search in, from below the leader's down (empty: the whole branch).
   const [placePath, setPlacePath] = useState<OrgPlace[]>([]);
-  const [result, setResult] = useState<SubscriberLookup | null>(initial ? { year: null, subscribers: [initial] } : null);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  // The subscriber chosen from the dropdown, shown under it.
+  const [chosen, setChosen] = useState<ExistingSubscriber | null>(initial ?? null);
+  // The open campaign year, from the last search: "Already registered for 2026".
+  const [year, setYear] = useState<number | null>(null);
 
   // Clears what a chosen subscriber filled in, keeping the organisation choice.
   function clearFilled() {
@@ -85,35 +111,18 @@ function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
   function applyAnswer(answer: "Y" | "N") {
     setValue("isExisting", answer, { shouldDirty: true });
     clearErrors("subscriberId");
-    setResult(null);
-    setSearchError(null);
+    setChosen(null);
+    setQuery("");
   }
 
-  async function search() {
-    const q = query.trim();
-    const orgId = placePath.at(-1)?.id;
-    if (!q && orgId === undefined) {
-      setSearchError("Please enter a name, mobile, address or ledger number, or choose a place.");
-      return;
-    }
-    setSearching(true);
-    setSearchError(null);
-    try {
-      setResult(await lookupSubscribers(q, orgId));
-    } catch (error) {
-      setResult(null);
-      setSearchError(apiErrorMessage(error, "Could not search. Please try again."));
-    } finally {
-      setSearching(false);
-    }
-  }
+  const orgId = placePath.at(-1)?.id;
+  // As the server accepts: a number of any length, 2 or more letters, or just a place.
+  const canSearch = (q: string) => /^\d+$/.test(q) || q.length >= 2 || (q === "" && orgId !== undefined);
 
-  // Enter searches; it must not submit the surrounding form.
-  function onSearchKey(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void search();
-    }
+  async function search(q: string) {
+    const found = await lookupSubscribers(q, orgId);
+    setYear(found.year);
+    return { items: found.subscribers, more: found.more };
   }
 
   function choose(subscriber: ExistingSubscriber) {
@@ -121,133 +130,65 @@ function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
       setValue(name as keyof typeof EMPTY_SUBSCRIBER_FORM, value as never, { shouldDirty: true, shouldValidate: true });
     }
     clearErrors("subscriberId");
+    setChosen(subscriber);
+    setQuery(subscriber.name);
     onChosen(subscriber);
   }
 
-  const chosen = result?.subscribers.find((subscriber) => subscriber.subscriber_id === chosenId);
+  const shownChosen = chosen && chosen.subscriber_id === chosenId ? chosen : null;
 
   return (
     <FormSection title="Subscriber Information">
       <Field className="md:col-span-2">
         <FieldLabel>Is Existing Subscriber ?</FieldLabel>
-        <div className="flex gap-6" role="radiogroup" aria-label="Is Existing Subscriber">
-          {(["Y", "N"] as const).map((answer) => (
-            <label key={answer} className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="isExisting"
-                checked={isExisting === answer}
-                onChange={() => chooseAnswer(answer)}
-                className="size-4 accent-navy"
-              />
-              {answer === "Y" ? "Yes" : "No"}
-            </label>
-          ))}
-        </div>
+        <YesNoSwitch label="Is Existing Subscriber" checked={isExisting === "Y"} onChange={(on) => chooseAnswer(on ? "Y" : "N")} />
       </Field>
 
       {isExisting === "Y" && (
         <div className="space-y-4 md:col-span-2">
-          <Field data-invalid={searchError || errors.subscriberId ? true : undefined}>
-            <FieldLabel htmlFor="subscriberSearch">Search subscriber</FieldLabel>
-            <div className="flex gap-2">
-              <Input
-                id="subscriberSearch"
-                value={query}
-                inputMode="search"
-                autoComplete="off"
-                placeholder="Name, mobile, address, PV ledger or subscriber no."
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={onSearchKey}
-                className="h-10 bg-white"
-              />
-              <Button type="button" onClick={() => void search()} disabled={searching} className="h-10 rounded-full px-5">
-                {searching ? <Spinner /> : <Search />}
-                Search
-              </Button>
-            </div>
-            <FieldError>{searchError ?? errors.subscriberId?.message}</FieldError>
-          </Field>
-
+          {/* The places first, then the search box under them. */}
           <div className="space-y-2">
             <p className="text-[13px] text-[#555]">Search in (optional)</p>
             <HierarchyFilter rootId={rootId} path={placePath} onChange={(_id, path) => setPlacePath(path)} />
           </div>
 
-          {result?.more && (
-            <p className="text-[13px] text-amber-700">
-              Showing the first {result.subscribers.length} matches. Type more of the name or choose a place to narrow it down.
-            </p>
-          )}
+          <Field data-invalid={errors.subscriberId ? true : undefined}>
+            <FieldLabel htmlFor="subscriberSearch">Search subscriber</FieldLabel>
+            <SearchCombobox<ExistingSubscriber>
+              id="subscriberSearch"
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Name, mobile, address, PV ledger or subscriber no."
+              canSearch={canSearch}
+              search={search}
+              scope={String(orgId ?? "")}
+              itemKey={(subscriber) => String(subscriber.subscriber_id)}
+              disabled={(subscriber) => subscriber.already_registered_this_year}
+              renderItem={(subscriber) => <SubscriberOption subscriber={subscriber} year={year} />}
+              onPick={choose}
+              empty={() => (
+                <span className="flex flex-wrap items-center justify-between gap-3">
+                  No subscriber found.
+                  <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => chooseAnswer("N")}>
+                    Add as new subscriber
+                  </Button>
+                </span>
+              )}
+              invalid={Boolean(errors.subscriberId)}
+            />
+            <FieldError>{errors.subscriberId?.message}</FieldError>
+          </Field>
 
-          {result && result.subscribers.length === 0 && (
-            <Alert className="rounded-xl bg-white">
-              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-                No subscriber found.
-                <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => chooseAnswer("N")}>
-                  Add as new subscriber
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {result && result.subscribers.length > 0 && (
-            <ul className="space-y-3">
-              {result.subscribers.map((subscriber) => {
-                const isChosen = subscriber.subscriber_id === chosenId;
-                const blocked = subscriber.already_registered_this_year;
-                return (
-                  <li
-                    key={subscriber.subscriber_id}
-                    className={`flex gap-3 rounded-xl border bg-white p-4 ${isChosen ? "border-navy ring-2 ring-navy/20" : "border-[#e7e1da]"} ${blocked ? "opacity-60" : ""}`}
-                  >
-                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#f3ebe2] text-sm font-semibold text-navy">
-                      {initials(subscriber.name)}
-                    </span>
-                    <div className="min-w-0 flex-1 space-y-1 text-[13px]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-navy">{subscriber.name}</p>
-                        <span className="rounded-full bg-[#f3ebe2] px-2 py-0.5 text-[11px] text-[#555]">
-                          {modeLabel(subscriber.previous.subscription_mode)} {subscriber.previous.year ?? ""}
-                        </span>
-                        {!blocked && (
-                          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] text-green-700">Renew</span>
-                        )}
-                      </div>
-                      <p className="text-[#555]">
-                        No. {subscriber.subscriber_id}
-                        {subscriber.ledger_no ? ` · Ledger ${subscriber.ledger_no}` : ""}
-                        {subscriber.mobile ? ` · +${subscriber.mobile_country ?? ""} ${subscriber.mobile}` : ""}
-                      </p>
-                      <p className="text-[#6b6b6b]">
-                        {[subscriber.previous.unit.name, addressLine(subscriber)].filter(Boolean).join(" — ")}
-                      </p>
-                      {blocked && (
-                        <p className="font-medium text-red-600">Already registered for {result.year}.</p>
-                      )}
-                    </div>
-                    {!blocked && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={isChosen ? "default" : "outline"}
-                        onClick={() => choose(subscriber)}
-                        className="self-center rounded-full"
-                      >
-                        {isChosen ? <CircleCheck /> : null}
-                        {isChosen ? "Selected" : "Select"}
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {chosen && (
-            <p className="text-[13px] text-green-700">
-              Filled from the {chosen.previous.year ?? "previous"} subscription. You can change any field.
-            </p>
+          {shownChosen && (
+            <div className="flex gap-3 rounded-xl border border-navy bg-white p-4 ring-2 ring-navy/20">
+              <CircleCheck className="mt-0.5 size-5 shrink-0 text-navy" />
+              <div className="min-w-0 flex-1 space-y-1 text-[13px]">
+                <SubscriberOption subscriber={shownChosen} year={year} />
+                <p className="text-green-700">
+                  Filled from the {shownChosen.previous.year ?? "previous"} subscription. You can change any field.
+                </p>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -1060,6 +1060,52 @@ export const lookupMember = async (req: Request, res: Response) => {
   }
 };
 
+export const memberSearchQuery = z.strictObject({
+  q: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : value),
+    z.string().min(2, "Please type at least 2 characters of the membership number or name.").max(50),
+  ),
+});
+
+const MEMBER_SEARCH_LIMIT = 20;
+
+// GET /pv/members/search?q=: ICF members in the leader's branch whose membership number starts
+// with q or whose name contains it, for the membership number dropdown. Choosing one then calls
+// /pv/members/lookup for the details. Up to 20; `more` when there are others.
+export const searchMembers = async (req: Request, res: Response) => {
+  try {
+    const parsed = memberSearchQuery.safeParse(req.query);
+    if (!parsed.success) throw AppError.badRequest(parsed.error.issues[0]?.message ?? "Please type a membership number or name.");
+    const q = parsed.data.q;
+
+    const leader = await requireLeader(req.user ?? req.auth);
+    const branches = await branchOf(leader);
+    const found = await prisma.membershipMaster.findMany({
+      where: {
+        unitId: { in: [...branches.keys()] },
+        OR: [{ membershipNo: { startsWith: q.toUpperCase() } }, { memberName: { contains: q } }],
+      },
+      select: { membershipNo: true, memberName: true, unitId: true, active: true },
+      orderBy: { membershipNo: "asc" },
+      take: MEMBER_SEARCH_LIMIT + 1,
+    });
+    const members = found.slice(0, MEMBER_SEARCH_LIMIT);
+    const units = await resolveOrganisationSummaries(members.map((member) => member.unitId));
+
+    return sendSuccess(res, "Members fetched successfully", {
+      members: members.map((member) => ({
+        membership_no: member.membershipNo,
+        name: member.memberName.trim(),
+        active: member.active === 1,
+        unit: units.get(member.unitId)?.name ?? null,
+      })),
+      more: found.length > MEMBER_SEARCH_LIMIT,
+    });
+  } catch (error) {
+    return handleError(res, error, "PV member search error:");
+  }
+};
+
 // Saves this year's subscription: for a new subscriber (also creating them), or a renewal of an
 // existing one (subscriberId sent; their contact details are updated from the form). The server
 // decides the year, currency and amount (from the open campaign) and records the leader as adder

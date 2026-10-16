@@ -178,6 +178,13 @@ export type SubscriberLookup = {
   more?: boolean;
 };
 
+/** GET /pv/members/search: members in the leader's branch matching a number or name. */
+export type MemberSearch = {
+  members: { membership_no: string; name: string; active: boolean; unit: string | null }[];
+  /** More matched than were returned. */
+  more: boolean;
+};
+
 /** GET /pv/members/lookup: an ICF member in the leader's branch, to fill a new subscriber's details. */
 export type IcfMember = {
   membership_no: string;

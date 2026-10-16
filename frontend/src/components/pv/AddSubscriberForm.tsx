@@ -161,11 +161,9 @@ function AddSubscriberForm({
       return;
     }
     if (getValues("isExisting") === "N") {
-      const member = getValues("isIcfMember");
-      if (!member) {
-        setError("isIcfMember", { message: "Please answer whether they are an ICF member." });
-        return;
-      }
+      // The ICF member switch starts off: left off, the answer is No.
+      const member = getValues("isIcfMember") || "No";
+      if (!getValues("isIcfMember")) setValue("isIcfMember", "No", { shouldDirty: true });
       if (member === "Yes" && !getValues("membershipId")) {
         setError("membershipId", { message: "Please enter the membership number and get the details." });
         return;

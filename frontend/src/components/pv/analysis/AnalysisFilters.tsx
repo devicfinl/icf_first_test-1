@@ -1,6 +1,7 @@
 import { RotateCcw } from "lucide-react";
 
 import type { AnalysisParamsPatch, FilterKey } from "../../../hooks/useAnalysisParams";
+import { RANGE_LABELS } from "../../../lib/pvFilters";
 import type { AnalysisFilters as Filters, AnalysisRange } from "../../../types/pvAnalysis";
 
 type Props = {
@@ -10,18 +11,6 @@ type Props = {
   activeCount: number;
   onChange: (patch: AnalysisParamsPatch) => void;
   onReset: () => void;
-};
-
-const RANGE_LABELS: Record<AnalysisRange, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  "1h": "1h",
-  "8h": "8h",
-  "24h": "24h",
-  "7d": "7 days",
-  "30d": "30 days",
-  campaign: "This campaign",
-  custom: "Custom",
 };
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
