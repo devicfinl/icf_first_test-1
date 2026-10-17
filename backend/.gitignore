@@ -1,5 +1,8 @@
 node_modules/
 dist/
 .env
+.env.local
 **/generated/
 .DS_Store
+# Table backups taken before migrations: they hold real data.
+sql/backups/

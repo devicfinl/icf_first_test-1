@@ -29,14 +29,10 @@ contact_person_name, organiser_name, organiser_mobile, organiser_country, ledger
 added_by (INT, user id), created_at, updated_at
 CHECK: registration_method <> 'PUBLIC' OR registration_type = 'NEW'
 
-## Step 0 - add legacy columns to pv_subscription_details before loading
-  legacy_previous_pvid  INT NULL          -- old previous_pvid (refers to LAST YEAR's system IDs)
-  legacy_added_by_name  VARCHAR(150) NULL -- old addedBy text (a person's name, not a user id)
-
 ## Cleaning rules (apply to every text column)
 - TRIM all values; convert empty strings '' to NULL.
 - LedgerNo 'PV100000' is a placeholder -> NULL.
-- membership_id '0' -> NULL.  previous_pvid '0' -> NULL.
+- membership_id '0' -> NULL.
 - subscription_from 'Janaury' -> 'January'.
 - A Mobile is "usable" only if it is NOT NULL and has at least 7 digits.
 
@@ -64,7 +60,6 @@ CHECK: registration_method <> 'PUBLIC' OR registration_type = 'NEW'
 - approval_status        = 'APPROVED'; approved_at = created_at; approved_by = NULL
 - previous_year_user     = previous_year_user
 - previous_subscription_id = NULL for all legacy rows (see warning below)
-- legacy_previous_pvid   = previous_pvid
 - subscription_year, subscription_from, subscription_to, quantity = same-named columns
 - subscription_mode      = subscription_mode; if NULL use 'Print' and list those IDs in the report
 - amount = Amount; cash_received = cash_received_from_cust; p_status = PStatus; c_status = CStatus
@@ -75,15 +70,16 @@ CHECK: registration_method <> 'PUBLIC' OR registration_type = 'NEW'
 - distributor_area=DistributorArea, contact_person_name=ContactPersonName,
   organiser_name=Oranaisor, organiser_mobile=OrganaisorMobile, organiser_country=Organiser_Country
 - ledger_no              = LedgerNo (after the PV100000 -> NULL rule)
-- legacy_added_by_name   = addedBy
-- added_by               = users.user_id only when addedBy exactly matches a user's full name, else NULL
+- added_by               = users.id only when addedBy exactly matches one user's full name, else NULL
 - created_at             = created_at
-- DROP (do not migrate): created_at_j (exact copy of created_at), Year (always 2025, derivable)
+- DROP (do not migrate): created_at_j (exact copy of created_at), Year (always 2025, derivable),
+  previous_pvid (see warning below)
 
 ## WARNING - previous_pvid
 previous_pvid refers to IDs from LAST YEAR's system, not to IDs in this table. About 13,000
 of those numbers happen to equal an ID in this table but belong to a DIFFERENT person.
-Never copy previous_pvid into previous_subscription_id. Keep it only in legacy_previous_pvid.
+Never copy previous_pvid into previous_subscription_id; it is not migrated. In the new design a
+subscriber's history is their pv_subscription_details rows under one subscriber_id.
 
 ## Requirements for the script
 1. Wrap everything in a transaction; stage into temp tables first, then INSERT into targets.

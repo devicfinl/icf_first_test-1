@@ -1,41 +1,44 @@
-// Thrown by controllers, shared utilities and middleware when a request breaks a rule; the
-// controller's handleError (or the global error handler) turns it into a response with this status.
-//
-// Status codes carry meaning across every module, so pick from the same set everywhere:
-//   400 the request itself is malformed or incomplete
-//   401 the caller is not authenticated, or the credentials/token they gave are not good
-//   403 the caller is authenticated but this particular thing is not theirs to do
-//   404 the thing they asked for does not exist
-//   429 they are going too fast, or have failed too many times
 export class AppError extends Error {
-  readonly statusCode: number;
-  // Field-level explanations, used by validation failures. Never carries secrets.
-  readonly details?: readonly { field: string; message: string }[];
+  msg!: string;
+  status!: number;
+  additionalInfo!: Record<string, any>;
 
-  constructor(statusCode: number, message: string, details?: readonly { field: string; message: string }[]) {
-    super(message);
+  constructor(msg: string, status = 500, additionalInfo: Record<string, any> = {}) {
+    super(msg);
     this.name = "AppError";
-    this.statusCode = statusCode;
-    this.details = details;
+    this.msg = msg;
+    this.status = status;
+    this.additionalInfo = additionalInfo;
   }
 
-  static badRequest(message: string, details?: readonly { field: string; message: string }[]) {
-    return new AppError(400, message, details);
+  get statusCode(): number {
+    return this.status;
+  }
+
+  get details(): any {
+    return this.additionalInfo;
+  }
+
+  static badRequest(message: string, details?: any) {
+    return new AppError(message, 400, details);
   }
 
   static unauthorized(message: string) {
-    return new AppError(401, message);
+    return new AppError(message, 401);
   }
 
   static forbidden(message: string) {
-    return new AppError(403, message);
+    return new AppError(message, 403);
   }
 
   static notFound(message: string) {
-    return new AppError(404, message);
+    return new AppError(message, 404);
   }
 
   static tooManyRequests(message: string) {
-    return new AppError(429, message);
+    return new AppError(message, 429);
   }
 }
+
+export default AppError;
+

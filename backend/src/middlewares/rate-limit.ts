@@ -31,3 +31,9 @@ export const authRateLimit = limiter(
   env.authRateLimitMax,
   "Too many attempts. Please wait a few minutes and try again.",
 );
+
+// Applied to the public subscription form, which anyone can submit without logging in.
+export const publicFormRateLimit = limiter(
+  env.authRateLimitMax,
+  "Too many submissions. Please wait a few minutes and try again.",
+);

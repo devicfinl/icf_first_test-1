@@ -24,13 +24,21 @@ export function parseSessionPosition(value: unknown): SessionPosition | null {
   return { cmid: cmid as number, desid: desid as number, orgid: orgid as number };
 }
 
-export function signAccessToken(userId: number, userName: string, position: SessionPosition | null = null): string {
+export function signAccessToken(
+  userId: number,
+  userName: string,
+  position: SessionPosition | null = null,
+  roles: string[] = [],
+  role?: string,
+): string {
   return jwt.sign(
     {
       sub: String(userId),
       userName,
       // Marks this as a session token; requireAuth refuses tokens issued for anything else.
       purpose: "access",
+      roles,
+      ...(role ? { role } : {}),
       ...(position ? { position } : {}),
     },
     env.jwtSecret,

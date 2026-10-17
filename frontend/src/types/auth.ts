@@ -30,7 +30,7 @@ export type LoginData = {
   /** Already applied to the token when the member holds exactly one cabinet position. */
   position: MemberPosition | null;
   positions: MemberPosition[];
-  requires_position_selection: boolean;
+
 };
 
 /** GET /auth/me: the session behind the caller's token, used to restore it on page load. */
@@ -39,12 +39,11 @@ export type CurrentSessionData = {
   name: string;
   position: MemberPosition | null;
   positions: MemberPosition[];
-  requires_position_selection: boolean;
   /** Seconds since the epoch. */
   expires_at: number;
 };
 
-export type SelectPositionData ={ auth: AuthToken; position: MemberPosition };
+export type SelectPositionData = { auth: AuthToken; position: MemberPosition };
 export type ChangePasswordData = { auth: AuthToken };
 export type PositionsData = { positions: MemberPosition[] };
 
@@ -98,6 +97,8 @@ export type MemberProfile = {
 export type Session = {
   token: string;
   membershipNo: string;
+  /** users.name from login or /auth/me. Optional: sessions stored before it was kept lack it. */
+  name?: string | null;
   position: MemberPosition | null;
   positions: MemberPosition[];
   requiresPositionSelection: boolean;
