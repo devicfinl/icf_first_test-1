@@ -1,25 +1,16 @@
 import { RotateCcw } from "lucide-react";
 
-import type { AnalysisParamsPatch } from "../../../hooks/useAnalysisParams";
+import type { AnalysisParamsPatch, FilterKey } from "../../../hooks/useAnalysisParams";
+import { RANGE_LABELS } from "../../../lib/pvFilters";
 import type { AnalysisFilters as Filters, AnalysisRange } from "../../../types/pvAnalysis";
 
 type Props = {
   filters: Filters;
+  /** The filters this tab uses; the others are not shown. */
+  shown: readonly FilterKey[];
   activeCount: number;
   onChange: (patch: AnalysisParamsPatch) => void;
   onReset: () => void;
-};
-
-const RANGE_LABELS: Record<AnalysisRange, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  "1h": "1h",
-  "8h": "8h",
-  "24h": "24h",
-  "7d": "7 days",
-  "30d": "30 days",
-  campaign: "This campaign",
-  custom: "Custom",
 };
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
@@ -65,21 +56,24 @@ function Group<T extends string>({
 const dateInput =
   "h-9 w-full rounded-lg border border-[#e2d6c8] bg-white px-2 text-[13px] outline-none focus-visible:border-clay focus-visible:ring-2 focus-visible:ring-clay/30";
 
-/** The filters every Analysis tab shares: time range, category, payment, ICF member and approval. */
-function AnalysisFilters({ filters, activeCount, onChange, onReset }: Props) {
+/** The Analysis filters a tab uses: time range, category, payment and ICF member. */
+function AnalysisFilters({ filters, shown, activeCount, onChange, onReset }: Props) {
+  const has = (key: FilterKey) => shown.includes(key);
   return (
     <div className="space-y-5">
       <p className="text-[12px] font-semibold tracking-wider text-navy uppercase">
         Filters{activeCount > 0 && <span className="ml-1 font-normal text-clay">({activeCount} active)</span>}
       </p>
 
-      <Group
-        label="Date & time"
-        value={filters.range}
-        options={(Object.entries(RANGE_LABELS) as [AnalysisRange, string][])}
-        onPick={(range) => onChange({ range })}
-      />
-      {filters.range === "custom" && (
+      {has("range") && (
+        <Group
+          label="Date & time"
+          value={filters.range}
+          options={Object.entries(RANGE_LABELS) as [AnalysisRange, string][]}
+          onPick={(range) => onChange({ range })}
+        />
+      )}
+      {has("range") && filters.range === "custom" && (
         <div className="grid grid-cols-2 gap-2">
           <label className="text-[12px] text-[#555]">
             From
@@ -92,30 +86,30 @@ function AnalysisFilters({ filters, activeCount, onChange, onReset }: Props) {
         </div>
       )}
 
-      <Group
-        label="Category"
-        value={filters.category}
-        options={[["all", "All"], ["new", "New"], ["renew", "Renewal"]]}
-        onPick={(category) => onChange({ category })}
-      />
-      <Group
-        label="Payment"
-        value={filters.payment}
-        options={[["all", "All"], ["paid", "Paid"], ["unpaid", "Not paid"]]}
-        onPick={(payment) => onChange({ payment })}
-      />
-      <Group
-        label="ICF member"
-        value={filters.member}
-        options={[["all", "All"], ["yes", "Member"], ["no", "Non-member"]]}
-        onPick={(member) => onChange({ member })}
-      />
-      <Group
-        label="Approval"
-        value={filters.status}
-        options={[["approved", "Approved"], ["pending", "Pending"], ["rejected", "Rejected"], ["all", "All"]]}
-        onPick={(status) => onChange({ status })}
-      />
+      {has("category") && (
+        <Group
+          label="Category"
+          value={filters.category}
+          options={[["all", "All"], ["new", "New"], ["renew", "Renewal"]]}
+          onPick={(category) => onChange({ category })}
+        />
+      )}
+      {has("payment") && (
+        <Group
+          label="Payment"
+          value={filters.payment}
+          options={[["all", "All"], ["paid", "Paid"], ["unpaid", "Not paid"]]}
+          onPick={(payment) => onChange({ payment })}
+        />
+      )}
+      {has("member") && (
+        <Group
+          label="ICF member"
+          value={filters.member}
+          options={[["all", "All"], ["yes", "Member"], ["no", "Non-member"]]}
+          onPick={(member) => onChange({ member })}
+        />
+      )}
 
       <button
         type="button"

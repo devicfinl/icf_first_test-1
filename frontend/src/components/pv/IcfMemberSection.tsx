@@ -1,18 +1,17 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useWatch } from "react-hook-form";
-import { CircleCheck, Search } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 import FormSection from "../form/FormSection";
 import { apiErrorMessage } from "../../api/axios";
-import { lookupMember } from "../../api/pv";
+import { lookupMember, searchMembers } from "../../api/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
-import type { IcfMember } from "../../types/pv";
+import type { IcfMember, MemberSearch } from "../../types/pv";
+import SearchCombobox from "./SearchCombobox";
+import YesNoSwitch from "./YesNoSwitch";
 
 type Props = {
   /** A member was found and their details filled in, e.g. to set the organisation dropdowns. */
@@ -48,8 +47,8 @@ function IcfMemberSection({ onFound }: Props) {
     }
   }
 
-  async function find() {
-    const no = number.trim().toUpperCase();
+  async function find(picked: string) {
+    const no = picked.trim().toUpperCase();
     if (!/^[A-Z]{2}\d{7}$/.test(no)) {
       setSearchError("Please enter a valid membership number, e.g. OM0001234.");
       return;
@@ -81,34 +80,14 @@ function IcfMemberSection({ onFound }: Props) {
     }
   }
 
-  // Enter looks the member up; it must not submit the surrounding form.
-  function onKey(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void find();
-    }
-  }
-
   return (
     <FormSection title="ICF Member">
       <Field className="md:col-span-2" data-invalid={errors.isIcfMember ? true : undefined}>
         <FieldLabel>
           Is ICF Member ?<span className="text-destructive">*</span>
         </FieldLabel>
-        <div className="flex gap-6" role="radiogroup" aria-label="Is ICF Member">
-          {(["Yes", "No"] as const).map((value) => (
-            <label key={value} className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="isIcfMember"
-                checked={isIcfMember === value}
-                onChange={() => answer(value)}
-                className="size-4 accent-navy"
-              />
-              {value}
-            </label>
-          ))}
-        </div>
+        {/* Off is "No"; saving records it as No when left off. */}
+        <YesNoSwitch label="Is ICF Member" checked={isIcfMember === "Yes"} onChange={(on) => answer(on ? "Yes" : "No")} />
         <FieldError>{errors.isIcfMember?.message}</FieldError>
       </Field>
 
@@ -116,21 +95,43 @@ function IcfMemberSection({ onFound }: Props) {
         <div className="space-y-4 md:col-span-2">
           <Field data-invalid={searchError || errors.membershipId ? true : undefined}>
             <FieldLabel htmlFor="membershipSearch">Membership Number</FieldLabel>
-            <div className="flex gap-2">
-              <Input
-                id="membershipSearch"
-                value={number}
-                autoComplete="off"
-                placeholder="e.g. OM0001234"
-                onChange={(event) => setNumber(event.target.value.toUpperCase())}
-                onKeyDown={onKey}
-                className="h-10 bg-white uppercase"
-              />
-              <Button type="button" onClick={() => void find()} disabled={searching} className="h-10 rounded-full px-5">
-                {searching ? <Spinner /> : <Search />}
-                Get details
-              </Button>
-            </div>
+            {/* Type 2 or more characters of the number or name; choosing one fills the form. */}
+            <SearchCombobox<MemberSearch["members"][number]>
+              id="membershipSearch"
+              value={number}
+              onValueChange={setNumber}
+              placeholder="Type the membership number or name"
+              canSearch={(q) => q.length >= 2}
+              search={async (q) => {
+                const found = await searchMembers(q);
+                return { items: found.members, more: found.more };
+              }}
+              itemKey={(item) => item.membership_no}
+              renderItem={(item) => (
+                <>
+                  <p className="font-medium text-navy">
+                    {item.membership_no} <span className="font-normal text-[#333]">· {item.name}</span>
+                    {!item.active && (
+                      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">Inactive</span>
+                    )}
+                  </p>
+                  {item.unit && <p className="text-[12px] text-[#6b6b6b]">{item.unit}</p>}
+                </>
+              )}
+              onPick={(item) => {
+                setNumber(item.membership_no);
+                void find(item.membership_no);
+              }}
+              // A full number typed and Enter pressed is looked up directly.
+              onEnter={(q) => {
+                if (!/^[A-Z]{2}\d{7}$/i.test(q)) return;
+                setNumber(q.toUpperCase());
+                void find(q);
+              }}
+              empty={(q) => `No ICF member in your area matches “${q}”.`}
+              busy={searching}
+              invalid={Boolean(searchError || errors.membershipId)}
+            />
             <FieldError>{searchError ?? errors.membershipId?.message}</FieldError>
           </Field>
 

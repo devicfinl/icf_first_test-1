@@ -61,7 +61,10 @@ function PvNewSubscribersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <YearSelect years={data?.years ?? []} value={data?.year ?? null} onChange={(year) => update({ year })} />
+            {/* Choosing another year is for development only; production shows the current campaign. */}
+            {import.meta.env.DEV && (
+              <YearSelect years={data?.years ?? []} value={data?.year ?? null} onChange={(year) => update({ year })} />
+            )}
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
@@ -76,6 +79,9 @@ function PvNewSubscribersPage() {
 
         {/* A Unit leader has no places below, so no dropdowns show. */}
         {scope && <HierarchyFilter rootId={scope.top_id} path={below} onChange={(orgId) => update({ org_id: orgId })} />}
+
+        {/* Each count against its base, with a progress line, in the same section as the filters. */}
+        {data && <SummaryCards summary={data} against inset />}
       </section>
 
       {shown?.error && (
@@ -84,7 +90,6 @@ function PvNewSubscribersPage() {
         </Alert>
       )}
 
-      {data && <SummaryCards summary={data} />}
 
       <SubscriptionsTable
         key={refreshKey}

@@ -168,7 +168,7 @@ function fakeQueryRaw(sql: string, ...values: any[]) {
   if (sql.includes("GROUP BY")) {
     return ofYear.filter(approved).map((row) => ({
       unit_id: row.unit_id, registration_type: row.type, subscription_mode: row.mode,
-      currency: "OMR", cash_received: row.cash, count: 1n, amount: row.amount,
+      currency: "OMR", cash_received: row.cash, day: row.created.slice(0, 10), count: 1n, amount: row.amount,
     }));
   }
 
@@ -292,6 +292,18 @@ const fakePrisma: any = {
     },
     groupBy: async ({ where }: any) =>
       where.unitId.in.filter((id: number) => MEMBERS[id]).map((id: number) => ({ unitId: id, _count: { _all: MEMBERS[id] } })),
+    // Member search: in the units given, number starting with or name containing the text.
+    findMany: async ({ where, take }: any) => {
+      const [byNo, byName] = where.OR;
+      return ICF_MEMBERS.filter(
+        (member) =>
+          where.unitId.in.includes(member.unitId) &&
+          (member.membershipNo.startsWith(byNo.membershipNo.startsWith) ||
+            member.memberName.toLowerCase().includes(byName.memberName.contains.toLowerCase())),
+      )
+        .sort((a, b) => a.membershipNo.localeCompare(b.membershipNo))
+        .slice(0, take);
+    },
   },
   // Tagged template: (strings, ...values). An INSERT is recorded; an UPDATE (approve / reject)
   // changes the public row in SUBS, whose subscriber_id is the last value.
@@ -588,7 +600,19 @@ test("analytics: work progress for the leader's place, approved subscriptions on
     membership: 16, total_units: 2, target: 10, target_print: 4, target_digital: 6, progress: 3 / 10,
   });
   assert.deepEqual(data.by_mode, { Print: 1, Digital: 1, "Print&Digital": 1 });
-  assert.deepEqual(data.amounts, [{ currency: "OMR", total: 14.5, received: 9.5 }]);
+  assert.deepEqual(data.by_day, [
+    { day: "2027-01-03", new: 1, renewals: 0 },
+    { day: "2027-01-04", new: 0, renewals: 1 },
+    { day: "2027-01-05", new: 1, renewals: 0 },
+  ]);
+  assert.deepEqual(data.amounts, [{
+    currency: "OMR", total: 14.5, received: 9.5,
+    by_day: [
+      { day: "2027-01-03", total: 3.5, received: 3.5 },
+      { day: "2027-01-04", total: 6, received: 6 },
+      { day: "2027-01-05", total: 5, received: 0 },
+    ],
+  }]);
   // Unit B's target is still a draft, so it has none yet.
   assert.deepEqual(
     data.places.map((place: any) => [
@@ -711,6 +735,22 @@ test("lookup: by name, and everyone in a chosen place without a search", async (
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: {} })).statusCode, 400);
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { q: "a" } })).statusCode, 400);
   assert.equal((await call(controller.lookupSubscribers, authFor(leader), { query: { org_id: 61 } })).statusCode, 403);
+});
+
+test("member search: by number or name, only inside the leader's branch", async () => {
+  const leader = PEOPLE.divisionLeader!;
+  const search = (q: string) => call(controller.searchMembers, authFor(leader), { query: { q } });
+
+  const byNumber = await search("om000");
+  assert.equal(byNumber.statusCode, 200, byNumber.body.message);
+  // Faisal (OM0009999) is in Sohar (82), outside Bousher.
+  assert.deepEqual(byNumber.body.data, {
+    members: [{ membership_no: "OM0001234", name: "Nasser Ali", active: true, unit: "Bousher Unit B" }],
+    more: false,
+  });
+  assert.deepEqual((await search("nass")).body.data.members.map((m: any) => m.membership_no), ["OM0001234"]);
+  assert.deepEqual((await search("faisal")).body.data.members, []);
+  assert.equal((await search("o")).statusCode, 400);
 });
 
 test("member lookup: an ICF member in the branch fills the form; others are refused", async () => {

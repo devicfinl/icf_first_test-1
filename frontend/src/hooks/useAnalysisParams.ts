@@ -8,11 +8,25 @@ export const ANALYSIS_TABS = [
   { id: "competition", label: "Competition" },
   { id: "participation", label: "Participation" },
   { id: "payment", label: "Payment" },
-  { id: "old", label: "Old Subscribers" },
-  { id: "new", label: "New Subscribers" },
   { id: "growth", label: "Growth" },
 ] as const;
 export type AnalysisTab = (typeof ANALYSIS_TABS)[number]["id"];
+
+/** The filters in the side panel. */
+export type FilterKey = "range" | "category" | "payment" | "member";
+
+/**
+ * The filters each tab shows and applies; the others are ignored there, so a value left over from
+ * another tab never changes numbers it cannot show. Growth compares whole campaigns, so a time
+ * range does not fit.
+ */
+export const TAB_FILTERS: Record<AnalysisTab, readonly FilterKey[]> = {
+  overview: [],
+  competition: ["range", "category", "member"],
+  participation: ["range", "category", "member"],
+  payment: ["range", "category", "payment", "member"],
+  growth: ["category", "member"],
+};
 
 const SORTS: readonly SubscriptionSort[] = ["created_at", "updated_at", "name", "amount", "mode", "category"];
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -24,7 +38,6 @@ const DEFAULTS = {
   category: "all",
   payment: "all",
   member: "all",
-  status: "approved",
   sort: "created_at",
   dir: "desc",
   page: "1",
@@ -41,27 +54,32 @@ const positive = (value: string | null) => {
 export type AnalysisParamsPatch = Partial<Record<keyof typeof DEFAULTS | "year" | "org_id" | "from" | "to" | "search", string | number | undefined>>;
 
 /**
- * The Analysis page's tab, filters, sort and page, kept in the URL (e.g. ?tab=all&category=renew&range=7d)
+ * The Analysis page's tab, filters, sort and page, kept in the URL (e.g. ?tab=payment&category=renew&range=7d)
  * so a view can be shared or reloaded. Changing anything but the page goes back to page 1.
  */
 export function useAnalysisParams() {
   const [params, setParams] = useSearchParams();
 
   const state = useMemo(() => {
+    const tab = pick<AnalysisTab>(params.get("tab"), ANALYSIS_TABS.map((item) => item.id), "overview");
+    const shown = new Set(TAB_FILTERS[tab]);
+    const range = shown.has("range") ? pick<AnalysisRange>(params.get("range"), RANGES, "campaign") : "campaign";
+    // Year, place and search always apply; the panel's filters only where the tab shows them.
+    // Only approved subscriptions are analysed.
     const filters: AnalysisFilters = {
       year: positive(params.get("year")),
       orgId: positive(params.get("org_id")),
-      range: pick<AnalysisRange>(params.get("range"), RANGES, "campaign"),
-      from: params.get("from") ?? undefined,
-      to: params.get("to") ?? undefined,
-      category: pick(params.get("category"), ["all", "new", "renew"] as const, "all"),
-      payment: pick(params.get("payment"), ["all", "paid", "unpaid"] as const, "all"),
-      member: pick(params.get("member"), ["all", "yes", "no"] as const, "all"),
-      status: pick(params.get("status"), ["approved", "pending", "rejected", "all"] as const, "approved"),
+      range,
+      from: range === "custom" ? (params.get("from") ?? undefined) : undefined,
+      to: range === "custom" ? (params.get("to") ?? undefined) : undefined,
+      category: shown.has("category") ? pick(params.get("category"), ["all", "new", "renew"] as const, "all") : "all",
+      payment: shown.has("payment") ? pick(params.get("payment"), ["all", "paid", "unpaid"] as const, "all") : "all",
+      member: shown.has("member") ? pick(params.get("member"), ["all", "yes", "no"] as const, "all") : "all",
+      status: "approved",
       search: params.get("search") ?? undefined,
     };
     return {
-      tab: pick<AnalysisTab>(params.get("tab"), ANALYSIS_TABS.map((tab) => tab.id), "overview"),
+      tab,
       filters,
       sort: pick(params.get("sort"), SORTS, "created_at"),
       dir: pick(params.get("dir"), ["asc", "desc"] as const, "desc"),
@@ -89,19 +107,16 @@ export function useAnalysisParams() {
     [setParams],
   );
 
-  // Filters that differ from their default, for the "n active" count.
+  // The tab's panel filters that differ from their default, for the "n active" count.
   const { filters } = state;
   const activeFilters =
     Number(filters.range !== "campaign") +
     Number(filters.category !== "all") +
     Number(filters.payment !== "all") +
-    Number(filters.member !== "all") +
-    Number(filters.status !== "approved") +
-    Number(Boolean(filters.search));
+    Number(filters.member !== "all");
 
   const resetFilters = useCallback(
-    () =>
-      update({ range: undefined, from: undefined, to: undefined, category: undefined, payment: undefined, member: undefined, status: undefined, search: undefined }),
+    () => update({ range: undefined, from: undefined, to: undefined, category: undefined, payment: undefined, member: undefined }),
     [update],
   );
 

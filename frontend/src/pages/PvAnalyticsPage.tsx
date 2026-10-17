@@ -8,19 +8,17 @@ import FormPanel from "../components/layout/FormPanel";
 
 import AnalyticsBreakdown from "../components/pv/AnalyticsBreakdown";
 import PlaceProgressList from "../components/pv/PlaceProgressList";
-import ProgressDetails from "../components/pv/ProgressDetails";
 import PvPageHeader from "../components/pv/PvPageHeader";
 import SetTargetDrawer from "../components/pv/SetTargetDrawer";
 import WorkProgressCard from "../components/pv/WorkProgressCard";
 import YearSelect from "../components/pv/YearSelect";
 import AnalysisFilters from "../components/pv/analysis/AnalysisFilters";
 import PlacesTable from "../components/pv/analysis/PlacesTable";
-import SubscriptionsTable from "../components/pv/analysis/SubscriptionsTable";
 import SummaryCards from "../components/pv/analysis/SummaryCards";
 import { Reveal } from "../components/pv/Animated";
 import { apiErrorMessage } from "../api/axios";
 import { fetchAnalysisSummary, fetchPvAnalytics } from "../api/pv";
-import { ANALYSIS_TABS, useAnalysisParams } from "../hooks/useAnalysisParams";
+import { ANALYSIS_TABS, TAB_FILTERS, useAnalysisParams } from "../hooks/useAnalysisParams";
 import type { PvAnalytics } from "../types/pv";
 import type { AnalysisSummary } from "../types/pvAnalysis";
 
@@ -30,7 +28,7 @@ import type { AnalysisSummary } from "../types/pvAnalysis";
  * Clicking a place opens its report; the trail at the top goes back up, never above the leader.
  */
 function PvAnalyticsPage() {
-  const { tab, filters, sort, dir, page, pageSize, update, activeFilters, resetFilters } = useAnalysisParams();
+  const { tab, filters, update, activeFilters, resetFilters } = useAnalysisParams();
   const [analytics, setAnalytics] = useState<{ key: string; data?: PvAnalytics; error?: string } | null>(null);
   const [summary, setSummary] = useState<{ key: string; data?: AnalysisSummary; error?: string } | null>(null);
   const [settingTarget, setSettingTarget] = useState(false);
@@ -90,7 +88,7 @@ function PvAnalyticsPage() {
   const trail = path.slice(Math.max(0, path.findIndex((place) => place.id === scope?.top_id)));
 
   const filterPanel = (
-    <AnalysisFilters filters={filters} activeCount={activeFilters} onChange={update} onReset={resetFilters} />
+    <AnalysisFilters filters={filters} shown={TAB_FILTERS[tab]} activeCount={activeFilters} onChange={update} onReset={resetFilters} />
   );
 
   return (
@@ -165,17 +163,21 @@ function PvAnalyticsPage() {
             <div key={`${shownAnalytics.data.scope.place.id}:${shownAnalytics.data.year}`} className="space-y-5">
               <div className="grid gap-4 xl:grid-cols-[3fr_2fr]">
                 <Reveal order={0} className="[&>section]:h-full">
-                  <WorkProgressCard progress={shownAnalytics.data.totals} />
+                  <WorkProgressCard progress={shownAnalytics.data.totals} byDay={shownAnalytics.data.by_day} />
                 </Reveal>
-                <Reveal order={1} className="[&>section]:h-full">
-                  <ProgressDetails progress={shownAnalytics.data.totals} />
+                {/* Beside Work Progress: subscriptions by mode, with the amount under it. Amount
+                    stretches so the column ends level with Work Progress. */}
+                <Reveal order={1} className="flex flex-col gap-4 [&>section:last-child]:flex-1">
+                  <AnalyticsBreakdown analytics={shownAnalytics.data} />
                 </Reveal>
               </div>
-              <Reveal order={2} className="grid gap-4 md:grid-cols-2">
-                <AnalyticsBreakdown analytics={shownAnalytics.data} />
-              </Reveal>
-              <Reveal order={3}>
-                <PlaceProgressList places={shownAnalytics.data.places} onOpen={(place) => open(place.id)} />
+              <Reveal order={2}>
+                <PlaceProgressList
+                  places={shownAnalytics.data.places}
+                  onOpen={(place) => open(place.id)}
+                  placeName={shownAnalytics.data.scope.place.name}
+                  year={shownAnalytics.data.year}
+                />
               </Reveal>
             </div>
           )}
@@ -189,11 +191,7 @@ function PvAnalyticsPage() {
             ) : (
               !error && <Loader label="Loading…" className="min-h-[96px] rounded-2xl bg-white" />
             )}
-            {tab === "new" || tab === "old" ? (
-              <SubscriptionsTable tab={tab} filters={filters} sort={sort} dir={dir} page={page} pageSize={pageSize} onChange={update} />
-            ) : (
-              <PlacesTable tab={tab} filters={filters} onOpen={open} />
-            )}
+            <PlacesTable tab={tab} filters={filters} onOpen={open} />
           </div>
         </div>
       )}

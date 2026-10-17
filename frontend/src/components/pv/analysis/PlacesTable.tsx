@@ -1,11 +1,16 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronRight, Download, Share2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import Loader from "../../loading-ui/Loader";
+import ShareTableDialog, { type ShareView } from "../ShareTableDialog";
 import { apiErrorMessage } from "../../../api/axios";
 import { fetchAnalysisPlaces } from "../../../api/pv";
+import { TAB_FILTERS } from "../../../hooks/useAnalysisParams";
+import { downloadCsv, fileSlug } from "../../../lib/csv";
 import { formatAmount, formatPercent, levelLabel } from "../../../lib/pv";
+import { describeFilters } from "../../../lib/pvFilters";
 import type { AnalysisFilters, AnalysisPlaces, PlaceAnalysis } from "../../../types/pvAnalysis";
 
 export type PlacesTab = "competition" | "participation" | "payment" | "growth";
@@ -19,7 +24,8 @@ type Props = {
   onOpen: (id: number) => void;
 };
 
-type Column = { label: string; value: (row: PlaceAnalysis) => ReactNode };
+// Plain text, so the same columns serve the table, the CSV and the shared message.
+type Column = { key: string; label: string; value: (row: PlaceAnalysis) => string };
 
 const count = (value: number) => value.toLocaleString();
 const signed = (value: number) => (value > 0 ? `+${value.toLocaleString()}` : value.toLocaleString());
@@ -29,32 +35,42 @@ const amounts = (row: PlaceAnalysis, pick: "received" | "pending") =>
 
 const COLUMNS: Record<PlacesTab, Column[]> = {
   competition: [
-    { label: "Target", value: (row) => (row.target === null ? "—" : count(row.target)) },
-    { label: "Subscriptions", value: (row) => count(row.subscriptions) },
-    { label: "% of target", value: (row) => formatPercent(row.achieved) },
-    { label: "New", value: (row) => count(row.new) },
-    { label: "Renewal", value: (row) => count(row.renewals) },
+    { key: "target", label: "Target", value: (row) => (row.target === null ? "—" : count(row.target)) },
+    { key: "subscriptions", label: "Subscriptions", value: (row) => count(row.subscriptions) },
+    { key: "achieved", label: "% of target", value: (row) => formatPercent(row.achieved) },
+    { key: "new", label: "New", value: (row) => count(row.new) },
+    { key: "renewals", label: "Renewal", value: (row) => count(row.renewals) },
   ],
   participation: [
-    { label: "Units", value: (row) => count(row.units) },
-    { label: "With subscriptions", value: (row) => count(row.active_units) },
-    { label: "Without", value: (row) => count(row.units - row.active_units) },
-    { label: "Participation", value: (row) => formatPercent(row.participation) },
+    { key: "units", label: "Units", value: (row) => count(row.units) },
+    { key: "active", label: "With subscriptions", value: (row) => count(row.active_units) },
+    { key: "without", label: "Without", value: (row) => count(row.units - row.active_units) },
+    { key: "participation", label: "Participation", value: (row) => formatPercent(row.participation) },
   ],
   payment: [
-    { label: "Paid", value: (row) => count(row.paid) },
-    { label: "Not paid", value: (row) => count(row.unpaid) },
-    { label: "Paid rate", value: (row) => formatPercent(row.paid_rate) },
-    { label: "Collected", value: (row) => amounts(row, "received") },
-    { label: "Pending", value: (row) => amounts(row, "pending") },
+    { key: "paid", label: "Paid", value: (row) => count(row.paid) },
+    { key: "unpaid", label: "Not paid", value: (row) => count(row.unpaid) },
+    { key: "paid_rate", label: "Paid rate", value: (row) => formatPercent(row.paid_rate) },
+    { key: "received", label: "Collected", value: (row) => amounts(row, "received") },
+    { key: "pending", label: "Pending", value: (row) => amounts(row, "pending") },
   ],
   growth: [
-    { label: "Last year", value: (row) => count(row.last_year) },
-    { label: "This year", value: (row) => count(row.subscriptions) },
-    { label: "Net growth", value: (row) => signed(row.growth) },
-    { label: "Growth rate", value: (row) => signedPercent(row.growth_rate) },
+    { key: "last_year", label: "Last year", value: (row) => count(row.last_year) },
+    { key: "this_year", label: "This year", value: (row) => count(row.subscriptions) },
+    { key: "growth", label: "Net growth", value: (row) => signed(row.growth) },
+    { key: "growth_rate", label: "Growth rate", value: (row) => signedPercent(row.growth_rate) },
   ],
 };
+
+const TAB_LABELS: Record<PlacesTab, string> = {
+  competition: "Competition",
+  participation: "Participation",
+  payment: "Payment",
+  growth: "Growth",
+};
+
+// Competition is listed by rank; the others in the order the server gives (by name).
+const ordered = (tab: PlacesTab, places: Row[]) => (tab === "competition" ? [...places].sort((a, b) => a.rank - b.rank) : places);
 
 const NOTES: Partial<Record<PlacesTab, string>> = {
   competition: "Ranked by share of the print + digital target; places without a target come last.",
@@ -65,6 +81,7 @@ const NOTES: Partial<Record<PlacesTab, string>> = {
 /** One row per place directly below the report's place; clicking one opens its report. */
 function PlacesTable({ tab, filters, onOpen }: Props) {
   const [result, setResult] = useState<{ key: string; data?: AnalysisPlaces; error?: string } | null>(null);
+  const [sharing, setSharing] = useState(false);
   const key = JSON.stringify(filters);
 
   useEffect(() => {
@@ -82,15 +99,60 @@ function PlacesTable({ tab, filters, onOpen }: Props) {
   const shown = result?.key === key ? result : null;
   const data = shown?.data;
   const columns = COLUMNS[tab];
-  const rows: Row[] = data
-    ? tab === "competition"
-      ? [...data.places].sort((a, b) => a.rank - b.rank)
-      : data.places
+  const rows: Row[] = data ? ordered(tab, data.places) : [];
+  const level = levelLabel(rows[0]?.level);
+  const title = data ? `Pravasi Vayana${data.year ? ` ${data.year}` : ""} · ${data.scope.place.name ?? ""}` : "";
+
+  // Every tab's columns are in the data, so the message can share any of them.
+  const views: ShareView<PlaceAnalysis & { name?: string | null }>[] = data
+    ? (Object.keys(COLUMNS) as PlacesTab[]).map((id) => ({
+        id,
+        label: TAB_LABELS[id],
+        columns: COLUMNS[id].map((column) => ({ key: column.key, label: column.label, text: column.value })),
+        rows: ordered(id, data.places),
+        total: data.totals,
+        order: id === "competition" ? "by % of target" : undefined,
+      }))
     : [];
+
+  function exportCsv() {
+    if (!data) return;
+    downloadCsv(`pravasi-vayana-${tab}-${fileSlug(data.scope.place.name ?? "places")}-${data.year ?? ""}.csv`, [
+      ["#", level, ...columns.map((column) => column.label)],
+      ...rows.map((row, index) => [
+        String(tab === "competition" ? row.rank : index + 1),
+        row.name ?? "—",
+        ...columns.map((column) => column.value(row)),
+      ]),
+      ["", "Total", ...columns.map((column) => column.value(data.totals))],
+    ]);
+  }
 
   return (
     <section className="rounded-2xl bg-white px-4 py-5 sm:px-6">
-      {NOTES[tab] && <p className="mb-3 text-[13px] text-[#6b6b6b]">{NOTES[tab]}</p>}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-[#6b6b6b]">{NOTES[tab]}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setSharing(true)} disabled={rows.length === 0}>
+            <Share2 />
+            Share
+          </Button>
+          <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+            <Download />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+      <ShareTableDialog
+        open={sharing}
+        onOpenChange={setSharing}
+        title={title}
+        details={describeFilters(filters, TAB_FILTERS[tab])}
+        entity={level}
+        name={(row) => row.name ?? "—"}
+        views={views}
+        initialView={tab}
+      />
       {shown?.error && (
         <Alert variant="destructive" className="rounded-xl">
           <AlertDescription>{shown.error}</AlertDescription>
@@ -106,9 +168,9 @@ function PlacesTable({ tab, filters, onOpen }: Props) {
             <thead className="bg-[#faf7f3] text-[12px] text-[#555]">
               <tr>
                 <th className="px-3 py-2.5 font-medium">#</th>
-                <th className="px-3 py-2.5 font-medium">{levelLabel(rows[0]?.level)}</th>
+                <th className="px-3 py-2.5 font-medium">{level}</th>
                 {columns.map((column) => (
-                  <th key={column.label} className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
+                  <th key={column.key} className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
                     {column.label}
                   </th>
                 ))}
@@ -125,7 +187,7 @@ function PlacesTable({ tab, filters, onOpen }: Props) {
                   <td className="px-3 py-2.5 text-[#6b6b6b]">{tab === "competition" ? row.rank : index + 1}</td>
                   <td className="px-3 py-2.5 font-medium text-navy">{row.name ?? "—"}</td>
                   {columns.map((column) => (
-                    <td key={column.label} className="px-3 py-2.5 text-right whitespace-nowrap">
+                    <td key={column.key} className="px-3 py-2.5 text-right whitespace-nowrap">
                       {column.value(row)}
                     </td>
                   ))}
@@ -140,7 +202,7 @@ function PlacesTable({ tab, filters, onOpen }: Props) {
                 <td className="px-3 py-2.5" />
                 <td className="px-3 py-2.5">Total</td>
                 {columns.map((column) => (
-                  <td key={column.label} className="px-3 py-2.5 text-right whitespace-nowrap">
+                  <td key={column.key} className="px-3 py-2.5 text-right whitespace-nowrap">
                     {/* The totals have no target, so Target and % of target show "—". */}
                     {column.value(data.totals)}
                   </td>

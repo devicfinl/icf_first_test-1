@@ -101,7 +101,15 @@ export type PvAnalytics = {
   };
   totals: PvProgress;
   by_mode: Record<SubscriptionMode, number>;
-  amounts: { currency: string; total: number; received: number }[];
+  /** New and renewed subscriptions added on each day (YYYY-MM-DD, earliest first). */
+  by_day: { day: string; new: number; renewals: number }[];
+  /** Per currency, with the amount added on each day (YYYY-MM-DD, earliest first). */
+  amounts: {
+    currency: string;
+    total: number;
+    received: number;
+    by_day: { day: string; total: number; received: number }[];
+  }[];
   places: (OrgPlace & PvProgress)[];
 };
 
@@ -168,6 +176,13 @@ export type SubscriberLookup = {
   subscribers: ExistingSubscriber[];
   /** More matched than are shown: narrow the search. */
   more?: boolean;
+};
+
+/** GET /pv/members/search: members in the leader's branch matching a number or name. */
+export type MemberSearch = {
+  members: { membership_no: string; name: string; active: boolean; unit: string | null }[];
+  /** More matched than were returned. */
+  more: boolean;
 };
 
 /** GET /pv/members/lookup: an ICF member in the leader's branch, to fill a new subscriber's details. */

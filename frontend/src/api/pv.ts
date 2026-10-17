@@ -10,6 +10,7 @@ import type {
 import type {
   CreatedRegistration,
   IcfMember,
+  MemberSearch,
   NewPublicRegistration,
   PublicRegistrationPage,
   PublicStatus,
@@ -77,6 +78,11 @@ export async function lookupSubscribers(q: string, orgId?: number): Promise<Subs
   const { data } = await api.get<ApiEnvelope<SubscriberLookup>>("/pv/subscribers/lookup", {
     params: { q: q || undefined, org_id: orgId },
   });
+  return unwrap(data);
+}
+
+export async function searchMembers(q: string): Promise<MemberSearch> {
+  const { data } = await api.get<ApiEnvelope<MemberSearch>>("/pv/members/search", { params: { q } });
   return unwrap(data);
 }
 

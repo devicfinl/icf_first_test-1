@@ -3,96 +3,31 @@ import {
   RefreshCw,
   TrendingUp,
   Target,
+  Wallet,
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { CountUp, PercentUp } from "./Animated";
-import { useAnimatedValue } from "../../hooks/useAnimatedValue";
-import type { PvProgress } from "../../types/pv";
+import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import type { PvAnalytics, PvProgress } from "../../types/pv";
 
 const NEW_COLOR = "#9c5722";
-const RENEW_COLOR = "#d4b08c";
-const TRACK_COLOR = "#f3ebe2";
+// Navy, not a light tan: a thin Renew line must read on white.
+const RENEW_COLOR = "#142c50";
 
-/** Ring of subscriptions over target: New then Renew, the rest is the track. */
-function ProgressRing({ progress }: { progress: PvProgress }) {
-  const radius = 78;
-  const stroke = 22;
-  const size = (radius + stroke / 2) * 2;
-  const circumference = 2 * Math.PI * radius;
-  // Without a target the ring still shows how the subscriptions split into new and renew.
-  const scale = Math.max(progress.target, progress.subscriptions, 1);
-  // The arcs sweep round from empty when the numbers arrive or change.
-  const newLength = useAnimatedValue(
-    (Math.min(progress.new, scale) / scale) * circumference,
-    1100,
-  );
-  const renewLength = useAnimatedValue(
-    (Math.max(Math.min(progress.renewals, scale - progress.new), 0) / scale) *
-      circumference,
-    1100,
-  );
-
-  const arc = (length: number, offset: number, color: string) => (
-    <circle
-      cx={size / 2}
-      cy={size / 2}
-      r={radius}
-      fill="none"
-      stroke={color}
-      strokeWidth={stroke}
-      strokeDasharray={`${length} ${circumference}`}
-      strokeDashoffset={-offset}
-    />
-  );
-
-  return (
-    <div className="relative size-[200px] shrink-0">
-      {/* Starts at the bottom left and runs clockwise, like the design. */}
-      <svg
-        viewBox={`0 0 ${size} ${size}`}
-        className="size-full rotate-[135deg]"
-        aria-hidden
-      >
-        {arc(circumference, 0, TRACK_COLOR)}
-        {newLength > 0.5 && arc(newLength, 0, NEW_COLOR)}
-        {renewLength > 0.5 && arc(renewLength, newLength, RENEW_COLOR)}
-      </svg>
-      <div className="absolute inset-0 grid place-items-center text-center">
-        <div>
-          <p className="text-[26px] leading-none font-bold text-navy">
-            <CountUp value={progress.subscriptions} />
-          </p>
-          <p className="mt-1 text-[10px] text-[#555]">Subscription</p>
-          <div className="mx-auto my-1.5 h-px w-16 bg-[#cfc6bc]" />
-          <p className="text-[22px] leading-none font-bold text-navy">
-            <CountUp value={progress.target} />
-          </p>
-          <p className="mt-1 text-[10px] text-[#555]">Target</p>
-          <div className="mt-1.5 space-y-0.5 text-[10px] text-[#555]">
-            <p className="flex items-center justify-center gap-1">
-              New <span className="size-2" style={{ background: NEW_COLOR }} />
-            </p>
-            <p className="flex items-center justify-center gap-1">
-              Renew{" "}
-              <span className="size-2" style={{ background: RENEW_COLOR }} />
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+/** A count, or a count against its base ("value / of") with the share of it. */
 function Tile({
   icon: Icon,
   label,
   value,
+  of,
 }: {
   icon: LucideIcon;
   label: string;
   value: number;
+  of?: number;
 }) {
   return (
     <div className="rounded-xl border border-[#ecdfd1] px-3 py-3 text-center">
@@ -100,44 +35,131 @@ function Tile({
       <p className="mt-1 text-[12px] text-[#6b6b6b]">{label}</p>
       <p className="text-[16px] font-semibold text-navy">
         <CountUp value={value} />
+        {of !== undefined && <span className="font-normal text-[#555]"> / {of.toLocaleString()}</span>}
       </p>
+      {of !== undefined && (
+        <p className="text-[12px] text-[#6b6b6b]">{of > 0 ? <PercentUp value={value / of} /> : "—"}</p>
+      )}
+    </div>
+  );
+}
+
+const chartConfig = {
+  new: { label: "New", color: NEW_COLOR },
+  renewals: { label: "Renew", color: RENEW_COLOR },
+} satisfies ChartConfig;
+
+const dayLabel = (day: string) =>
+  new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+/** New and renewed subscriptions, added up day by day through the campaign. */
+function NewRenewChart({ days }: { days: PvAnalytics["by_day"] }) {
+  const points = days.reduce<PvAnalytics["by_day"]>((sums, day) => {
+    const last = sums.at(-1);
+    sums.push({ day: day.day, new: (last?.new ?? 0) + day.new, renewals: (last?.renewals ?? 0) + day.renewals });
+    return sums;
+  }, []);
+
+  return (
+    <div className="flex min-w-0 flex-col">
+      <p className="text-[13px] font-medium text-navy">New and Renew by day</p>
+      {points.length < 2 ? (
+        <p className="mt-2 grid flex-1 place-items-center rounded-xl bg-[#faf7f3] py-10 text-[13px] text-[#6b6b6b]">
+          The graph shows once subscriptions are added on two days.
+        </p>
+      ) : (
+        <>
+          <ChartContainer config={chartConfig} className="mt-2 aspect-auto h-56 w-full">
+            <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="day" tickLine={false} axisLine={false} tickFormatter={dayLabel} minTickGap={24} />
+              <YAxis tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+              <ChartTooltip
+                content={({ active, payload, label }) =>
+                  active && payload?.length ? (
+                    <div className="rounded-lg border border-[#ecdfd1] bg-white px-3 py-2 text-[12px] shadow-sm">
+                      <p className="font-medium text-navy">{dayLabel(String(label))}</p>
+                      {payload.map((item) => (
+                        <p key={String(item.dataKey)} className="mt-0.5 flex items-center gap-1.5 text-[#333]">
+                          <span className="size-2 rounded-full" style={{ background: item.color }} />
+                          {chartConfig[item.dataKey as keyof typeof chartConfig].label}:{" "}
+                          {Number(item.value).toLocaleString()}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null
+                }
+              />
+              <Line dataKey="new" type="monotone" stroke="var(--color-new)" strokeWidth={2} dot={false} />
+              {/* Dashed, so the two lines differ by more than colour. */}
+              <Line
+                dataKey="renewals"
+                type="monotone"
+                stroke="var(--color-renewals)"
+                strokeWidth={2}
+                strokeDasharray="5 4"
+                dot={false}
+              />
+            </LineChart>
+          </ChartContainer>
+          <div className="mt-1 flex justify-center gap-4 text-[12px] text-[#555]">
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4" style={{ background: NEW_COLOR }} />
+              New
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 border-t-2 border-dashed" style={{ borderColor: RENEW_COLOR }} />
+              Renew
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /**
- * Work Progress: subscriptions ÷ target as a percentage, the ring with New and Renew, and four
- * tiles. Target is the print + digital target from Set Target.
+ * Work Progress: the title with subscriptions ÷ target as a percentage beside it, the New and
+ * Renew line graph across the card, then tiles: units, the target, and New, Renewed and Payment
+ * Completed each against their base. Target is the print + digital target from Set Target.
  */
-function WorkProgressCard({ progress }: { progress: PvProgress }) {
+function WorkProgressCard({ progress, byDay }: { progress: PvProgress; byDay: PvAnalytics["by_day"] }) {
   return (
     <section className="rounded-2xl bg-white p-5 sm:p-6">
-      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="self-stretch sm:self-auto">
-          <div className="flex items-center gap-3">
-            <span className="grid size-12 place-items-center rounded-full bg-[#f6efe8]">
-              <Zap className="size-5 text-navy" />
-            </span>
-            <h2 className="text-[20px] font-semibold text-navy">
-              Work Progress
-            </h2>
-          </div>
-          <p className="mt-6 text-[44px] leading-none font-bold text-navy">
+      {/* The title, with the total % of the target on the right. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid size-12 place-items-center rounded-full bg-[#f6efe8]">
+            <Zap className="size-5 text-navy" />
+          </span>
+          <h2 className="text-[20px] font-semibold text-navy">
+            Work Progress
+          </h2>
+        </div>
+        <div className="text-right">
+          <p className="text-[32px] leading-none font-bold text-navy">
             {progress.progress === null ? (
-              "No target set"
+              <span className="text-[18px]">No target set</span>
             ) : (
               <PercentUp value={progress.progress} />
             )}
           </p>
+          <p className="mt-1 text-[12px] text-[#6b6b6b]">of target achieved</p>
         </div>
-        <ProgressRing progress={progress} />
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* New and Renew day by day, the full width of the card. */}
+      <div className="mt-5">
+        <NewRenewChart days={byDay} />
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
         <Tile icon={Layers} label="Total Units" value={progress.total_units} />
         <Tile icon={Target} label="Total Target" value={progress.target} />
-        <Tile icon={TrendingUp} label="New" value={progress.new} />
-        <Tile icon={RefreshCw} label="Renew" value={progress.renewals} />
+        {/* New of the target, renewed of last year's subscribers, paid of this year's. */}
+        <Tile icon={TrendingUp} label="New" value={progress.new} of={progress.target} />
+        <Tile icon={RefreshCw} label="Renewed" value={progress.renewals} of={progress.renewable} />
+        <Tile icon={Wallet} label="Payment Completed" value={progress.paid} of={progress.subscriptions} />
       </div>
     </section>
   );

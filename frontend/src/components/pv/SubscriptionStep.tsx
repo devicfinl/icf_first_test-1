@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 
 import FormSection from "../form/FormSection";
 import TextField from "../form/TextField";
+import YesNoSwitch from "./YesNoSwitch";
 import { formatAmount, includesPrint } from "../../lib/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import type { PriceState } from "../../hooks/useRegistrationPrice";
@@ -37,6 +38,7 @@ function SubscriptionStep({ price, showCashReceived, submitLabel = "Save And Con
   const mode = useWatch({ control, name: "subscriptionMode" });
   const buildingName = useWatch({ control, name: "buildingName" });
   const province = useWatch({ control, name: "province" });
+  const cashReceived = useWatch({ control, name: "cashReceived" });
 
   // These two repeat step-1 fields. The copies write through setValue, which also updates the
   // step-1 inputs, so both always show the same text.
@@ -124,14 +126,11 @@ function SubscriptionStep({ price, showCashReceived, submitLabel = "Save And Con
         {showCashReceived && (
         <Field className="md:col-span-2">
           <FieldLabel>Cash Received From Subscriber?</FieldLabel>
-          <div className="flex gap-6">
-            {(["Y", "N"] as const).map((value) => (
-              <label key={value} className="flex items-center gap-2 text-sm">
-                <input type="radio" value={value} className="size-4 accent-navy" {...register("cashReceived")} />
-                {value === "Y" ? "Yes" : "No"}
-              </label>
-            ))}
-          </div>
+          <YesNoSwitch
+            label="Cash Received From Subscriber"
+            checked={cashReceived === "Y"}
+            onChange={(on) => setValue("cashReceived", on ? "Y" : "N", { shouldDirty: true })}
+          />
         </Field>
         )}
       </FormSection>

@@ -29,7 +29,10 @@ type Base = { year: number | null; years: number[]; scope: AnalysisScope };
 
 /** GET /pv/analysis/summary: the cards above each tab. */
 export type AnalysisSummary = Base & {
-  totals: { subscriptions: number; new: number; renewals: number; paid: number; unpaid: number };
+  /** The place's print + digital target from Set Target; 0 when none. */
+  target: number;
+  /** renewable: last year's subscriptions, which the renewals are counted against. */
+  totals: { subscriptions: number; new: number; renewals: number; renewable: number; paid: number; unpaid: number };
   amounts: { currency: string; total: number; received: number; pending: number }[];
 };
 

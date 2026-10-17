@@ -304,6 +304,16 @@ when their latest subscription is outside the leader's branch (403), when they a
 the open year (400), or when the subscriber does not exist (400). The 201 answer has
 `"registration_type": "RENEW"`.
 
+### `GET /api/pv/members/search?q=`
+
+ICF members in the leader's branch whose membership number starts with `q` or whose name contains
+it (at least 2 characters), for the membership number dropdown; up to 20, `more` when there are
+others. `400` when `q` is shorter.
+
+```json
+{ "members": [{ "membership_no": "OM0001234", "name": "Nasser Ali", "active": true, "unit": "Bousher Unit B" }], "more": false }
+```
+
 ### `GET /api/pv/members/lookup?membership_no=`
 
 For a new subscriber who is an ICF member: their membership record (`OM0001234`, any case), to fill
@@ -384,7 +394,11 @@ place: the report cannot go above it.
               "print": 500, "digital": 311, "membership": 1248, "total_units": 12,
               "target": 1000, "target_print": 400, "target_digital": 600, "progress": 0.811 },
   "by_mode": { "Print": 300, "Digital": 311, "Print&Digital": 200 },
-  "amounts": [{ "currency": "OMR", "total": 3600.5, "received": 3100 }],
+  "by_day": [{ "day": "2027-01-03", "new": 14, "renewals": 9 }],
+  "amounts": [{
+    "currency": "OMR", "total": 3600.5, "received": 3100,
+    "by_day": [{ "day": "2027-01-03", "total": 120, "received": 95 }]
+  }],
   "places": [{ "id": 805, "name": "Ghubra East", "level": "Unit", "subscriptions": 311, "target": 548, "progress": 0.5675, … }]
 }
 ```
@@ -399,7 +413,7 @@ Shared filters (all optional): `year` (default: the place's open campaign year, 
 (`approved` (default) | `pending` | `rejected` | `all`), `search` (name, mobile, ledger number or
 subscriber number). Time ranges use the database server's clock on `created_at`.
 
-- `summary`: `totals` (subscriptions, new, renewals, paid, unpaid) and `amounts` per currency
+- `summary`: `target` (the place's print + digital target from Set Target, 0 when none), `totals` (subscriptions, new, renewals, renewable = last year's subscriptions, paid, unpaid) and `amounts` per currency
   (total, received, pending).
 - `subscriptions`: adds `tab` (`all` | `new` | `old`), `sort` (`created_at`, `updated_at`, `name`,
   `amount`, `mode`, `category`), `dir`, `page`, `page_size` (25, 50, 100), and `export=1` for every

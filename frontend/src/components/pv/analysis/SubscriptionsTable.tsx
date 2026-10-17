@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, Columns3, Download, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, Download, Search, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,11 +16,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import Loader from "../../loading-ui/Loader";
+import ShareTableDialog from "../ShareTableDialog";
 import StatusBadge from "../StatusBadge";
 import TablePager from "../TablePager";
 import { apiErrorMessage } from "../../../api/axios";
 import { fetchAnalysisSubscriptions } from "../../../api/pv";
+import { downloadCsv } from "../../../lib/csv";
 import { formatAmount, formatMobile, modeLabel, titleCase } from "../../../lib/pv";
+import { describeFilters } from "../../../lib/pvFilters";
 import { clickableRowClass, onRowClick, subscriberPath } from "../../../lib/rowLink";
 import type { AnalysisFilters, AnalysisSubscription, AnalysisSubscriptionPage, SubscriptionSort } from "../../../types/pvAnalysis";
 
@@ -118,18 +121,8 @@ function saveColumns(keys: string[]) {
   }
 }
 
-const csvCell = (value: string) => (/[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
-
-function download(name: string, rows: string[][]) {
-  // The byte-order mark makes Excel read the file as UTF-8 (names in other scripts).
-  const blob = new Blob(["﻿" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+// Ticked in the shared message when it opens: enough to read, without contact details.
+const SHARE_COLUMNS = ["unit", "name", "mode", "category", "payment", "amount"];
 
 /** The subscriptions for the filters: All, New Subscribers, or last year's (Old Subscribers). */
 function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange }: Props) {
@@ -150,6 +143,9 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     }
   }
   const [exporting, setExporting] = useState(false);
+  // Every row for the filters, loaded when Share is pressed; the dialog is open while it is set.
+  const [shareRows, setShareRows] = useState<AnalysisSubscription[] | null>(null);
+  const [loadingShare, setLoadingShare] = useState(false);
 
   const key = JSON.stringify({ tab, filters, sort, dir, page, pageSize });
   useEffect(() => {
@@ -196,7 +192,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     setExporting(true);
     try {
       const all = await fetchAnalysisSubscriptions(filters, { tab, sort, dir, page: 1, pageSize, exportAll: true });
-      download(`pravasi-vayana-${tab}-${yearShown ?? "subscriptions"}.csv`, [
+      downloadCsv(`pravasi-vayana-${tab}-${yearShown ?? "subscriptions"}.csv`, [
         ["Sl No", ...columns.map((column) => column.label)],
         ...all.rows.map((row, index) => [String(index + 1), ...columns.map((column) => column.text(row))]),
       ]);
@@ -208,8 +204,43 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     }
   }
 
+  async function openShare() {
+    setLoadingShare(true);
+    try {
+      const all = await fetchAnalysisSubscriptions(filters, { tab, sort, dir, page: 1, pageSize, exportAll: true });
+      if (all.total > all.rows.length) toast.warning(`Only the first ${all.rows.length.toLocaleString()} rows can be shared.`);
+      setShareRows(all.rows);
+    } catch (failure) {
+      toast.error(apiErrorMessage(failure, "Could not load the list to share."));
+    } finally {
+      setLoadingShare(false);
+    }
+  }
+
   return (
     <section className="rounded-2xl bg-white px-4 py-5 sm:px-6">
+      {data && (
+        <ShareTableDialog<AnalysisSubscription>
+          open={shareRows !== null}
+          onOpenChange={(open) => !open && setShareRows(null)}
+          title={`Pravasi Vayana${yearShown ? ` ${yearShown}` : ""} · ${data.scope.place.name ?? ""}`}
+          details={describeFilters(filters, ["search"])}
+          entity="Subscriber"
+          countWord="First"
+          name={(row) => row.name}
+          views={[
+            {
+              id: "subscribers",
+              label: "Subscribers",
+              // The name is the start of each line, so it is not a column here.
+              columns: choosable
+                .filter((column) => column.key !== "name")
+                .map((column) => ({ key: column.key, label: column.label, text: column.text, shown: SHARE_COLUMNS.includes(column.key) })),
+              rows: shareRows ?? [],
+            },
+          ]}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="relative w-full max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[#999]" />
@@ -249,6 +280,10 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
               <DropdownMenuItem onSelect={() => choose(defaultColumns())}>Reset to default</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button variant="outline" onClick={openShare} disabled={loadingShare || !data || data.total === 0}>
+            <Share2 />
+            {loadingShare ? "Loading…" : "Share"}
+          </Button>
           <Button variant="outline" onClick={exportCsv} disabled={exporting || !data || data.total === 0}>
             <Download />
             {exporting ? "Preparing…" : "Export CSV"}
