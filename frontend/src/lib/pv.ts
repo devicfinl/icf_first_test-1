@@ -67,9 +67,9 @@ export function toRegistrationRequest(data: AddSubscriberFormData): NewRegistrat
     deliveryResponsibility: includesPrint(data.subscriptionMode) ? optional(data.deliveryResponsibility) : undefined,
     cashReceived: data.cashReceived,
     subscriberId: data.isExisting === "Y" ? data.subscriberId : undefined,
-    // Asked only of a new subscriber.
-    isIcfMember: data.isExisting === "N" && data.isIcfMember ? data.isIcfMember : undefined,
-    membershipId: data.isExisting === "N" && data.isIcfMember === "Yes" ? data.membershipId : undefined,
+    // Asked of new and renewing subscribers (leader's form only).
+    isIcfMember: data.isIcfMember ? data.isIcfMember : undefined,
+    membershipId: data.isIcfMember === "Yes" ? data.membershipId : undefined,
   };
 }
 

@@ -11,18 +11,21 @@ import { lookupMember, searchMembers } from "../../api/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import type { IcfMember, MemberSearch } from "../../types/pv";
 import SearchCombobox from "./SearchCombobox";
-import YesNoSwitch from "./YesNoSwitch";
+import YesNoRadio from "./YesNoRadio";
 
 type Props = {
+  /** Renewing an existing subscriber: the membership number is recorded, their details are kept. */
+  renewing?: boolean;
   /** A member was found and their details filled in, e.g. to set the organisation dropdowns. */
   onFound: (member: IcfMember) => void;
 };
 
 /**
- * For a new subscriber: "Is ICF Member?". Yes asks for the membership number and fills the
- * name, mobile, WhatsApp and unit from the membership record (every field stays editable).
+ * "Is ICF Member?", for a new or a renewing subscriber. Yes asks for the membership number; for a
+ * new subscriber it fills the name, mobile, WhatsApp and unit from the membership record (every
+ * field stays editable). A renewal keeps the details chosen from the existing subscriber.
  */
-function IcfMemberSection({ onFound }: Props) {
+function IcfMemberSection({ renewing = false, onFound }: Props) {
   const {
     control,
     setValue,
@@ -60,6 +63,8 @@ function IcfMemberSection({ onFound }: Props) {
       setMember(found);
       const fill = { shouldDirty: true, shouldValidate: true } as const;
       setValue("membershipId", found.membership_no, fill);
+      clearErrors("membershipId");
+      if (renewing) return;
       setValue("name", found.name, fill);
       if (found.mobile) {
         setValue("mobileCountry", found.mobile_country ?? "", fill);
@@ -86,8 +91,14 @@ function IcfMemberSection({ onFound }: Props) {
         <FieldLabel>
           Is ICF Member ?<span className="text-destructive">*</span>
         </FieldLabel>
-        {/* Off is "No"; saving records it as No when left off. */}
-        <YesNoSwitch label="Is ICF Member" checked={isIcfMember === "Yes"} onChange={(on) => answer(on ? "Yes" : "No")} />
+        {/* Neither is chosen at first: the leader must answer Yes or No to continue. */}
+        <YesNoRadio
+          label="Is ICF Member"
+          values={["Yes", "No"]}
+          value={isIcfMember}
+          onChange={answer}
+          invalid={Boolean(errors.isIcfMember)}
+        />
         <FieldError>{errors.isIcfMember?.message}</FieldError>
       </Field>
 
@@ -148,12 +159,12 @@ function IcfMemberSection({ onFound }: Props) {
                     .join(" · ")}
                 </p>
                 {!member.active && <p className="text-amber-700">This membership is not active.</p>}
-                <p className="text-green-700">Name, mobile and unit filled in. You can change any field.</p>
+                {!renewing && <p className="text-green-700">Name, mobile and unit filled in. You can change any field.</p>}
               </div>
             </div>
           )}
 
-          {member?.existing_subscriber && (
+          {!renewing && member?.existing_subscriber && (
             <Alert className="rounded-xl bg-white">
               <AlertDescription>
                 {member.existing_subscriber.name} is already a subscriber (No. {member.existing_subscriber.subscriber_id}).

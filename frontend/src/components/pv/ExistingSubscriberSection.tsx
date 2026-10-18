@@ -11,7 +11,7 @@ import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import { EMPTY_SUBSCRIBER_FORM, formFromExisting, modeLabel } from "../../lib/pv";
 import type { ExistingSubscriber, OrgPlace } from "../../types/pv";
 import ConfirmDialog from "../ConfirmDialog";
-import YesNoSwitch from "./YesNoSwitch";
+import YesNoRadio from "./YesNoRadio";
 import SearchCombobox from "./SearchCombobox";
 import HierarchyFilter from "./analysis/HierarchyFilter";
 
@@ -110,7 +110,7 @@ function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
 
   function applyAnswer(answer: "Y" | "N") {
     setValue("isExisting", answer, { shouldDirty: true });
-    clearErrors("subscriberId");
+    clearErrors(["isExisting", "subscriberId"]);
     setChosen(null);
     setQuery("");
   }
@@ -139,9 +139,19 @@ function ExistingSubscriberSection({ rootId, initial, onChosen }: Props) {
 
   return (
     <FormSection title="Subscriber Information">
-      <Field className="md:col-span-2">
-        <FieldLabel>Is Existing Subscriber ?</FieldLabel>
-        <YesNoSwitch label="Is Existing Subscriber" checked={isExisting === "Y"} onChange={(on) => chooseAnswer(on ? "Y" : "N")} />
+      <Field className="md:col-span-2" data-invalid={errors.isExisting ? true : undefined}>
+        <FieldLabel>
+          Is Existing Subscriber ?<span className="text-destructive">*</span>
+        </FieldLabel>
+        {/* Neither is chosen at first: the leader must answer Yes or No to continue. */}
+        <YesNoRadio
+          label="Is Existing Subscriber"
+          values={["Y", "N"]}
+          value={isExisting}
+          onChange={chooseAnswer}
+          invalid={Boolean(errors.isExisting)}
+        />
+        <FieldError>{errors.isExisting?.message}</FieldError>
       </Field>
 
       {isExisting === "Y" && (
