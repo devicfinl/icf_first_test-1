@@ -1,4 +1,4 @@
-import { CircleCheck, Clock, RefreshCw, UserPlus, Users, Wallet, type LucideIcon } from "lucide-react";
+import { BadgeCheck, CircleCheck, Clock, RefreshCw, UserPlus, Users, Wallet, type LucideIcon } from "lucide-react";
 
 import { CountUp, GrowBar } from "../Animated";
 import { formatAmount, formatPercent } from "../../../lib/pv";
@@ -70,6 +70,7 @@ const LINE = {
   total: "bg-navy-deep",
   new: "bg-clay",
   renewal: "bg-navy",
+  members: "bg-navy-deep",
   paid: "bg-clay-deep",
   unpaid: "bg-sand",
   amount: "bg-clay",
@@ -79,22 +80,26 @@ const LINE = {
  * Total, New, Renewal, Paid, Not paid and the amount collected, for the active filters. With
  * `against`, each is shown against its base with a progress line: Total and New against the Set
  * Target total, Renewal against last year's subscriptions, Paid and Not paid against the total,
- * and the amount received against the amount.
+ * and the amount received against the amount. With `members`, an ICF Members card follows
+ * Renewal (against the total).
  */
 function SummaryCards({
   summary,
   against = false,
+  members = false,
   inset = false,
 }: {
   summary: AnalysisSummary;
   against?: boolean;
+  /** Adds the ICF Members card after Renewal. */
+  members?: boolean;
   /** Inside a white section: outlined cards. */
   inset?: boolean;
 }) {
   const { totals, amounts, target } = summary;
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className={`grid grid-cols-2 gap-3 ${members ? "md:grid-cols-4 xl:grid-cols-7" : "md:grid-cols-3 xl:grid-cols-6"}`}>
       <Card
         inset={inset}
         icon={Users}
@@ -118,6 +123,16 @@ function SummaryCards({
         hint={share(totals.renewals, totals.subscriptions)}
         of={against ? { value: totals.renewable, label: "last year", color: LINE.renewal } : undefined}
       />
+      {members && (
+        <Card
+          inset={inset}
+          icon={BadgeCheck}
+          label="ICF Members"
+          value={totals.icf_members}
+          hint={share(totals.icf_members, totals.subscriptions)}
+          of={against ? { value: totals.subscriptions, label: "total", color: LINE.members } : undefined}
+        />
+      )}
       <Card
         inset={inset}
         icon={CircleCheck}

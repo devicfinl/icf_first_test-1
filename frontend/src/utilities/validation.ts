@@ -49,9 +49,10 @@ export const addSubscriberSchema = z
   .object({
     // Find step
     // Y: renewing the existing subscriber chosen with the lookup (subscriberId).
-    isExisting: z.enum(["Y", "N"]),
+    // "": not answered yet (the leader's find step starts so, and must be answered to continue).
+    isExisting: z.enum(["", "Y", "N"]),
     subscriberId: z.number().int().positive().optional(),
-    // Asked of a new subscriber (leader's form only); Yes needs the membership number.
+    // Asked of new and renewing subscribers (leader's form only); Yes needs the membership number.
     isIcfMember: z.enum(["", "Yes", "No"]),
     membershipId: z.string().trim().toUpperCase(),
     // Details step

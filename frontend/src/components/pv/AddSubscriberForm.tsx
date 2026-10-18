@@ -82,7 +82,8 @@ function AddSubscriberForm({
 
   const form = useForm<AddSubscriberFormInput, unknown, AddSubscriberFormData>({
     resolver: zodResolver(addSubscriberSchema),
-    defaultValues: EMPTY_SUBSCRIBER_FORM,
+    // A leader adding a new subscriber must answer "Is Existing Subscriber?" first.
+    defaultValues: steps[0] === "find" ? { ...EMPTY_SUBSCRIBER_FORM, isExisting: "" } : EMPTY_SUBSCRIBER_FORM,
   });
   const {
     handleSubmit,
@@ -155,19 +156,24 @@ function AddSubscriberForm({
   }
 
   async function continueToDetails() {
+    if (!getValues("isExisting")) {
+      setError("isExisting", { message: "Please choose Yes or No." });
+      return;
+    }
     // A renewal needs the subscriber chosen from the search results.
     if (getValues("isExisting") === "Y" && !getValues("subscriberId")) {
       setError("subscriberId", { message: "Please search and select the subscriber, or choose No." });
       return;
     }
-    if (getValues("isExisting") === "N") {
-      // The ICF member switch starts off: left off, the answer is No.
-      const member = getValues("isIcfMember") || "No";
-      if (!getValues("isIcfMember")) setValue("isIcfMember", "No", { shouldDirty: true });
-      if (member === "Yes" && !getValues("membershipId")) {
-        setError("membershipId", { message: "Please enter the membership number and get the details." });
-        return;
-      }
+    // New or renewing, "Is ICF Member?" must be answered Yes or No; Yes needs the membership number.
+    const member = getValues("isIcfMember");
+    if (!member) {
+      setError("isIcfMember", { message: "Please choose Yes or No." });
+      return;
+    }
+    if (member === "Yes" && !getValues("membershipId")) {
+      setError("membershipId", { message: "Please enter the membership number and get the details." });
+      return;
     }
     if (await trigger([...ADD_SUBSCRIBER_FIND_FIELDS])) {
       goTo("details");

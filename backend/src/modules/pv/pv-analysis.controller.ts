@@ -166,7 +166,8 @@ export const analysisSummary = async (req: Request, res: Response) => {
       targetRow && (targetRow.status === "Active" || targetRow.setByOrg === place.id) ? targetRow.print + targetRow.digital : 0;
 
     // renewable: last year's subscriptions, which this year's renewals are counted against.
-    const totals = { subscriptions: 0, new: 0, renewals: 0, renewable: 0, paid: 0, unpaid: 0 };
+    // icf_members: subscriptions whose subscriber is an ICF member (is_icf_member = 'Yes').
+    const totals = { subscriptions: 0, new: 0, renewals: 0, renewable: 0, paid: 0, unpaid: 0, icf_members: 0 };
     const amounts = new Map<string, { currency: string; total: number; received: number }>();
 
     if (year !== null) {
@@ -174,11 +175,18 @@ export const analysisSummary = async (req: Request, res: Response) => {
       const lastYear = whereFor(filters, ids, year - 1, { withRange: false });
       const [rows, previous] = await Promise.all([
         prisma.$queryRawUnsafe<
-          { registration_type: string; cash_received: string | null; currency: string | null; count: unknown; amount: unknown }[]
+          {
+            registration_type: string;
+            cash_received: string | null;
+            currency: string | null;
+            is_icf_member: string | null;
+            count: unknown;
+            amount: unknown;
+          }[]
         >(
-          `SELECT d.registration_type, d.cash_received, d.currency, COUNT(*) AS count, SUM(d.amount) AS amount
+          `SELECT d.registration_type, d.cash_received, d.currency, m.is_icf_member, COUNT(*) AS count, SUM(d.amount) AS amount
            ${FROM} WHERE ${where.sql}
-           GROUP BY d.registration_type, d.cash_received, d.currency`,
+           GROUP BY d.registration_type, d.cash_received, d.currency, m.is_icf_member`,
           ...where.values,
         ),
         prisma.$queryRawUnsafe<{ count: unknown }[]>(`SELECT COUNT(*) AS count ${FROM} WHERE ${lastYear.sql}`, ...lastYear.values),
@@ -193,6 +201,7 @@ export const analysisSummary = async (req: Request, res: Response) => {
         else totals.new += count;
         if (paid) totals.paid += count;
         else totals.unpaid += count;
+        if (row.is_icf_member === "Yes") totals.icf_members += count;
 
         const currency = row.currency?.trim() || "—";
         const money = amounts.get(currency) ?? { currency, total: 0, received: 0 };
@@ -223,6 +232,7 @@ type SubscriptionRow = {
   mobile_country: string | null;
   mobile: string | null;
   is_icf_member: string | null;
+  membership_id: string | null;
   ledger_no: string | null;
   unit_id: number;
   subscription_year: number | null;
@@ -261,7 +271,7 @@ export const analysisSubscriptions = async (req: Request, res: Response) => {
     const [[count], rows] = await Promise.all([
       prisma.$queryRawUnsafe<{ total: unknown }[]>(`SELECT COUNT(*) AS total ${FROM} WHERE ${where.sql}`, ...where.values),
       prisma.$queryRawUnsafe<SubscriptionRow[]>(
-        `SELECT d.subscriber_id, m.name, m.mobile_country, m.mobile, m.is_icf_member, m.ledger_no, d.unit_id,
+        `SELECT d.subscriber_id, m.name, m.mobile_country, m.mobile, m.is_icf_member, m.membership_id, m.ledger_no, d.unit_id,
                 d.subscription_year, d.subscription_mode, d.registration_type, d.approval_status, d.currency,
                 d.amount, d.cash_received, d.added_by, d.created_at, d.updated_at${renewed}
          ${FROM} WHERE ${where.sql}
@@ -297,6 +307,8 @@ export const analysisSubscriptions = async (req: Request, res: Response) => {
           mobile_country: row.mobile_country,
           mobile: row.mobile,
           is_icf_member: row.is_icf_member,
+          // The ICF membership number, only for a member.
+          membership_id: row.is_icf_member === "Yes" ? row.membership_id : null,
           ledger_no: row.ledger_no,
           year: row.subscription_year,
           subscription_mode: row.subscription_mode,

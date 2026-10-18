@@ -31,8 +31,16 @@ type Base = { year: number | null; years: number[]; scope: AnalysisScope };
 export type AnalysisSummary = Base & {
   /** The place's print + digital target from Set Target; 0 when none. */
   target: number;
-  /** renewable: last year's subscriptions, which the renewals are counted against. */
-  totals: { subscriptions: number; new: number; renewals: number; renewable: number; paid: number; unpaid: number };
+  /** renewable: last year's subscriptions, which the renewals are counted against. icf_members: subscriptions by ICF members. */
+  totals: {
+    subscriptions: number;
+    new: number;
+    renewals: number;
+    renewable: number;
+    paid: number;
+    unpaid: number;
+    icf_members: number;
+  };
   amounts: { currency: string; total: number; received: number; pending: number }[];
 };
 
@@ -44,6 +52,8 @@ export type AnalysisSubscription = {
   mobile_country: string | null;
   mobile: string | null;
   is_icf_member: "Yes" | "No" | null;
+  /** The ICF membership number; null unless is_icf_member is "Yes". */
+  membership_id: string | null;
   ledger_no: string | null;
   year: number | null;
   subscription_mode: SubscriptionMode;

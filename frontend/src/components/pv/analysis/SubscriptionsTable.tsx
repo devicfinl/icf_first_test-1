@@ -25,6 +25,7 @@ import { downloadCsv } from "../../../lib/csv";
 import { formatAmount, formatMobile, modeLabel, titleCase } from "../../../lib/pv";
 import { describeFilters } from "../../../lib/pvFilters";
 import { clickableRowClass, onRowClick, subscriberPath } from "../../../lib/rowLink";
+import type { OrgPlace } from "../../../types/pv";
 import type { AnalysisFilters, AnalysisSubscription, AnalysisSubscriptionPage, SubscriptionSort } from "../../../types/pvAnalysis";
 
 type Tab = "all" | "new" | "old";
@@ -39,6 +40,12 @@ type Props = {
   onChange: (patch: { sort?: string; dir?: string; page?: number; page_size?: number; search?: string }) => void;
 };
 
+/** A row with every place above its unit, from the country down (the report's trail, then `under`). */
+type Row = AnalysisSubscription & { places: OrgPlace[] };
+
+const withPlaces = (page: AnalysisSubscriptionPage): Row[] =>
+  page.rows.map((row) => ({ ...row, places: [...page.scope.path, ...row.under] }));
+
 type Column = {
   key: string;
   label: string;
@@ -48,25 +55,46 @@ type Column = {
   /** Only on the Old Subscribers tab. */
   oldOnly?: boolean;
   align?: "right";
+  /** A place column (e.g. Region), and whether it shows only when a row has that level (Chapter). */
+  level?: { name: string; onlyIfPresent?: boolean };
   /** Plain text, for the download. */
-  text: (row: AnalysisSubscription) => string;
-  cell?: (row: AnalysisSubscription) => ReactNode;
+  text: (row: Row) => string;
+  cell?: (row: Row) => ReactNode;
 };
 
 const dateTime = (value: string | null) =>
   value
     ? new Date(value).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
     : "—";
-const money = (row: AnalysisSubscription) =>
+const money = (row: Row) =>
   row.amount === null ? "—" : row.currency ? formatAmount(row.amount, row.currency) : String(row.amount);
 
+// The row's place at a level (National is the country), e.g. its Region.
+const placeColumn = (key: string, label: string, name: string, onlyIfPresent = false): Column => ({
+  key,
+  label,
+  shown: true,
+  level: { name, onlyIfPresent },
+  text: (row) => row.places.find((place) => place.level === name)?.name ?? "—",
+});
+
+// The place columns, which replaced the single "Under" column.
+const PLACE_KEYS = ["country", "chapter", "region", "division"];
+// From the top down. A place column at or above the leader's own level is the same on every row: hidden.
+const LEVEL_ORDER = ["International", "National", "Chapter", "Region", "Division", "Unit"];
+
 const COLUMNS: Column[] = [
-  { key: "under", label: "Under", shown: true, text: (row) => row.under.map((place) => place.name).join(" • ") || "—" },
+  placeColumn("country", "Country", "National"),
+  // Only some countries (e.g. Saudi) have a Chapter level.
+  placeColumn("chapter", "Chapter", "Chapter", true),
+  placeColumn("region", "Region", "Region"),
+  placeColumn("division", "Division", "Division"),
   { key: "unit", label: "Unit", shown: true, text: (row) => row.unit.name ?? "—" },
   { key: "name", label: "Subscriber", sort: "name", shown: true, text: (row) => row.name },
   { key: "mobile", label: "Mobile", shown: true, text: (row) => formatMobile(row.mobile_country, row.mobile) },
   { key: "mode", label: "Subscription", sort: "mode", shown: true, text: (row) => modeLabel(row.subscription_mode) },
   { key: "member", label: "ICF Member", shown: true, text: (row) => row.is_icf_member ?? "—" },
+  { key: "membership_id", label: "Membership ID", shown: true, text: (row) => row.membership_id ?? "—" },
   {
     key: "category",
     label: "Category",
@@ -106,7 +134,14 @@ const defaultColumns = () => COLUMNS.filter((column) => column.shown).map((colum
 function savedColumns(): string[] {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    if (Array.isArray(saved) && saved.every((key) => typeof key === "string")) return saved;
+    if (Array.isArray(saved) && saved.every((key) => typeof key === "string")) {
+      // Saved before the place columns: "Under" becomes Country, Chapter, Region and Division.
+      const keys = saved.flatMap((key) => (key === "under" ? PLACE_KEYS : [key]));
+      // Saved before the Membership ID column: shown after ICF Member.
+      return keys.includes("member") && !keys.includes("membership_id")
+        ? keys.flatMap((key) => (key === "member" ? [key, "membership_id"] : [key]))
+        : keys;
+    }
   } catch {
     // Storage blocked or unreadable: the defaults.
   }
@@ -144,7 +179,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
   }
   const [exporting, setExporting] = useState(false);
   // Every row for the filters, loaded when Share is pressed; the dialog is open while it is set.
-  const [shareRows, setShareRows] = useState<AnalysisSubscription[] | null>(null);
+  const [shareRows, setShareRows] = useState<Row[] | null>(null);
   const [loadingShare, setLoadingShare] = useState(false);
 
   const key = JSON.stringify({ tab, filters, sort, dir, page, pageSize });
@@ -171,10 +206,18 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     return () => clearTimeout(timer);
   }, [search, urlSearch, onChange]);
 
-  const columns = COLUMNS.filter((column) => (!column.oldOnly || tab === "old") && visible.includes(column.key));
-  const choosable = COLUMNS.filter((column) => !column.oldOnly || tab === "old");
   const shown = result?.key === key ? result : null;
   const data = shown?.data;
+  const rows = data ? withPlaces(data) : [];
+  // The leader's own level: place columns at or above it are left out (a Region leader sees no Region).
+  const ownLevel = LEVEL_ORDER.indexOf(data?.scope.path.find((place) => place.id === data.scope.top_id)?.level ?? "");
+  // A Chapter column shows only when some row has a Chapter.
+  const present = (column: Column, list: Row[]) =>
+    !column.level ||
+    (LEVEL_ORDER.indexOf(column.level.name) > ownLevel &&
+      (!column.level.onlyIfPresent || list.some((row) => row.places.some((place) => place.level === column.level!.name))));
+  const choosable = COLUMNS.filter((column) => (!column.oldOnly || tab === "old") && present(column, rows));
+  const columns = choosable.filter((column) => visible.includes(column.key));
   const yearShown = tab === "old" && data?.year ? data.year - 1 : data?.year;
 
   function choose(keys: string[]) {
@@ -192,9 +235,11 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     setExporting(true);
     try {
       const all = await fetchAnalysisSubscriptions(filters, { tab, sort, dir, page: 1, pageSize, exportAll: true });
+      const allRows = withPlaces(all);
+      const exported = COLUMNS.filter((column) => (!column.oldOnly || tab === "old") && present(column, allRows) && visible.includes(column.key));
       downloadCsv(`pravasi-vayana-${tab}-${yearShown ?? "subscriptions"}.csv`, [
-        ["Sl No", ...columns.map((column) => column.label)],
-        ...all.rows.map((row, index) => [String(index + 1), ...columns.map((column) => column.text(row))]),
+        ["Sl No", ...exported.map((column) => column.label)],
+        ...allRows.map((row, index) => [String(index + 1), ...exported.map((column) => column.text(row))]),
       ]);
       if (all.total > all.rows.length) toast.warning(`Only the first ${all.rows.length.toLocaleString()} rows were downloaded.`);
     } catch (failure) {
@@ -209,7 +254,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
     try {
       const all = await fetchAnalysisSubscriptions(filters, { tab, sort, dir, page: 1, pageSize, exportAll: true });
       if (all.total > all.rows.length) toast.warning(`Only the first ${all.rows.length.toLocaleString()} rows can be shared.`);
-      setShareRows(all.rows);
+      setShareRows(withPlaces(all));
     } catch (failure) {
       toast.error(apiErrorMessage(failure, "Could not load the list to share."));
     } finally {
@@ -220,7 +265,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
   return (
     <section className="rounded-2xl bg-white px-4 py-5 sm:px-6">
       {data && (
-        <ShareTableDialog<AnalysisSubscription>
+        <ShareTableDialog<Row>
           open={shareRows !== null}
           onOpenChange={(open) => !open && setShareRows(null)}
           title={`Pravasi Vayana${yearShown ? ` ${yearShown}` : ""} · ${data.scope.place.name ?? ""}`}
@@ -233,7 +278,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
               id: "subscribers",
               label: "Subscribers",
               // The name is the start of each line, so it is not a column here.
-              columns: choosable
+              columns: COLUMNS.filter((column) => (!column.oldOnly || tab === "old") && present(column, shareRows ?? []))
                 .filter((column) => column.key !== "name")
                 .map((column) => ({ key: column.key, label: column.label, text: column.text, shown: SHARE_COLUMNS.includes(column.key) })),
               rows: shareRows ?? [],
@@ -308,7 +353,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
         </p>
       )}
 
-      {data && data.rows.length > 0 && (
+      {data && rows.length > 0 && (
         <>
           <div className="mt-4 max-h-[70vh] overflow-auto rounded-xl border border-[#ecdfd1]">
             <table className="w-full min-w-[900px] text-left text-[13px]">
@@ -330,7 +375,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row, index) => (
+                {rows.map((row, index) => (
                   <tr
                     key={`${row.subscriber_id}-${row.year}`}
                     className={clickableRowClass}

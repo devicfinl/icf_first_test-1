@@ -413,12 +413,13 @@ Shared filters (all optional): `year` (default: the place's open campaign year, 
 (`approved` (default) | `pending` | `rejected` | `all`), `search` (name, mobile, ledger number or
 subscriber number). Time ranges use the database server's clock on `created_at`.
 
-- `summary`: `target` (the place's print + digital target from Set Target, 0 when none), `totals` (subscriptions, new, renewals, renewable = last year's subscriptions, paid, unpaid) and `amounts` per currency
+- `summary`: `target` (the place's print + digital target from Set Target, 0 when none), `totals` (subscriptions, new, renewals, renewable = last year's subscriptions, paid, unpaid, icf_members = subscriptions whose subscriber has `is_icf_member = 'Yes'`) and `amounts` per currency
   (total, received, pending).
 - `subscriptions`: adds `tab` (`all` | `new` | `old`), `sort` (`created_at`, `updated_at`, `name`,
   `amount`, `mode`, `category`), `dir`, `page`, `page_size` (25, 50, 100), and `export=1` for every
   matching row (up to 10,000). `old` lists the year before's subscriptions, each with `renewed`.
-  Rows carry `unit` and `under` (the places between the report's place and the unit).
+  Rows carry `unit` and `under` (the places between the report's place and the unit), and
+  `membership_id` (the ICF membership number when `is_icf_member` is `Yes`, else null).
 - `places`: each place directly below, with subscriptions, new, renewals, `target` (print +
   digital from the targets table) and `achieved`, `rank`, paid / unpaid / `paid_rate` and
   `amounts`, `units` / `active_units` / `participation`, and `last_year` / `growth` /

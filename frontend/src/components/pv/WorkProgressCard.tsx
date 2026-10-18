@@ -32,13 +32,13 @@ function Tile({
   return (
     <div className="rounded-xl border border-[#ecdfd1] px-3 py-3 text-center">
       <Icon className="mx-auto size-5 text-clay" />
-      <p className="mt-1 text-[12px] text-[#6b6b6b]">{label}</p>
-      <p className="text-[16px] font-semibold text-navy">
+      <p className="mt-1 text-[14px] text-[#6b6b6b]">{label}</p>
+      <p className="text-[20px] font-semibold text-navy">
         <CountUp value={value} />
         {of !== undefined && <span className="font-normal text-[#555]"> / {of.toLocaleString()}</span>}
       </p>
       {of !== undefined && (
-        <p className="text-[12px] text-[#6b6b6b]">{of > 0 ? <PercentUp value={value / of} /> : "—"}</p>
+        <p className="text-[14px] text-[#6b6b6b]">{of > 0 ? <PercentUp value={value / of} /> : "—"}</p>
       )}
     </div>
   );
@@ -120,8 +120,9 @@ function NewRenewChart({ days }: { days: PvAnalytics["by_day"] }) {
 
 /**
  * Work Progress: the title with subscriptions ÷ target as a percentage beside it, the New and
- * Renew line graph across the card, then tiles: units, the target, and New, Renewed and Payment
- * Completed each against their base. Target is the print + digital target from Set Target.
+ * Renew line graph across the card, then tiles: units, New + Renewed against the target, New,
+ * Renewed, and Payment Completed against the subscriptions. Target is the print + digital target
+ * from Set Target.
  */
 function WorkProgressCard({ progress, byDay }: { progress: PvProgress; byDay: PvAnalytics["by_day"] }) {
   return (
@@ -155,10 +156,10 @@ function WorkProgressCard({ progress, byDay }: { progress: PvProgress; byDay: Pv
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
         <Tile icon={Layers} label="Total Units" value={progress.total_units} />
-        <Tile icon={Target} label="Total Target" value={progress.target} />
-        {/* New of the target, renewed of last year's subscribers, paid of this year's. */}
-        <Tile icon={TrendingUp} label="New" value={progress.new} of={progress.target} />
-        <Tile icon={RefreshCw} label="Renewed" value={progress.renewals} of={progress.renewable} />
+        {/* New + renewed of the target, and paid of this year's subscriptions. */}
+        <Tile icon={Target} label="Total Target" value={progress.new + progress.renewals} of={progress.target} />
+        <Tile icon={TrendingUp} label="New" value={progress.new} />
+        <Tile icon={RefreshCw} label="Renewed" value={progress.renewals} />
         <Tile icon={Wallet} label="Payment Completed" value={progress.paid} of={progress.subscriptions} />
       </div>
     </section>
