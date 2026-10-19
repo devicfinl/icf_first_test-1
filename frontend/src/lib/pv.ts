@@ -99,6 +99,9 @@ export function formFromExisting(subscriber: ExistingSubscriber): Partial<AddSub
     whatsappCountry: text(subscriber.whatsapp_country),
     whatsapp: text(subscriber.whatsapp),
     email: text(subscriber.email),
+    // "Is ICF Member?" as recorded (blank when never asked, for the leader to answer).
+    isIcfMember: subscriber.is_icf_member ?? "",
+    membershipId: text(subscriber.membership_id),
     shopName: text(previous.shop_name),
     floorNo: text(previous.floor_no),
     buildingName: text(previous.building_name),

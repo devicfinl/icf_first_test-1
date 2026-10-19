@@ -150,6 +150,10 @@ export type ExistingSubscriber = {
   whatsapp_country: string | null;
   whatsapp: string | null;
   email: string | null;
+  /** As recorded: null when never asked. */
+  is_icf_member: "Yes" | "No" | null;
+  /** The ICF membership number; null unless is_icf_member is "Yes". */
+  membership_id: string | null;
   /** Already has a subscription for the open campaign year: cannot be renewed again. */
   already_registered_this_year: boolean;
   previous: {
