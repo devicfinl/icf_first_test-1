@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWatch } from "react-hook-form";
 import { CircleCheck } from "lucide-react";
 
@@ -34,11 +34,24 @@ function IcfMemberSection({ renewing = false, onFound }: Props) {
   } = useSubscriberForm();
   const isIcfMember = useWatch({ control, name: "isIcfMember" });
   const membershipId = useWatch({ control, name: "membershipId" });
+  const subscriberId = useWatch({ control, name: "subscriberId" });
 
   const [number, setNumber] = useState(membershipId ?? "");
   const [member, setMember] = useState<IcfMember | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Renewing: the chosen subscriber's recorded membership number is looked up straight away, so
+  // the checked member shows as if the leader had searched it. Runs again for another subscriber.
+  useEffect(() => {
+    if (!renewing) return;
+    setNumber(membershipId ?? "");
+    setMember(null);
+    setSearchError(null);
+    if (membershipId) void find(membershipId);
+    // Only when the chosen subscriber changes; membershipId is read as filled in for them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renewing, subscriberId]);
 
   function answer(value: "Yes" | "No") {
     setValue("isIcfMember", value, { shouldDirty: true });

@@ -733,6 +733,8 @@ type MasterMatch = {
   whatsappCountry: string | null;
   whatsapp: string | null;
   email: string | null;
+  isIcfMember: string | null;
+  membershipId: string | null;
 };
 
 const MASTER_SELECT = {
@@ -744,6 +746,8 @@ const MASTER_SELECT = {
   whatsappCountry: true,
   whatsapp: true,
   email: true,
+  isIcfMember: true,
+  membershipId: true,
 } as const;
 
 // Subscribers matching the search as a subscriber number, a ledger number or a mobile number.
@@ -872,6 +876,9 @@ async function describeSubscribers(
       whatsapp_country: master.whatsappCountry,
       whatsapp: master.whatsapp,
       email: master.email,
+      // As recorded: "Yes" with the membership number, "No", or null when never asked.
+      is_icf_member: master.isIcfMember === "Yes" || master.isIcfMember === "No" ? master.isIcfMember : null,
+      membership_id: master.isIcfMember === "Yes" ? master.membershipId : null,
       already_registered_this_year: openYear !== null && rows.some((row) => row.subscription_year === openYear),
       previous: {
         year: last.subscription_year,

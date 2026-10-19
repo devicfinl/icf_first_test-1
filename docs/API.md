@@ -344,7 +344,8 @@ leader), so the form can set Division and Unit too.
   "subscribers": [{
     "subscriber_id": 6, "name": "Laila Hameed", "ledger_no": "PV2006",
     "mobile_country": "968", "mobile": "95550006", "whatsapp_country": "968", "whatsapp": "95550006",
-    "email": "laila@example.com", "already_registered_this_year": false,
+    "email": "laila@example.com", "is_icf_member": "Yes", "membership_id": "OM0001234",
+    "already_registered_this_year": false,
     "previous": {
       "year": 2026, "unit": { "id": 80, "name": "Bousher Unit A", "level": "Unit" },
       "path": [{ "id": 80, "name": "Bousher Unit A", "level": "Unit" }],
