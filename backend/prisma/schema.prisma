@@ -320,3 +320,44 @@ model HierarchyMapping {
   @@map("hierachy_mappings")
 }
 
+// 5. System Modules Catalogue for Access Control
+model SystemModule {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  category    String   @default("General") @db.VarChar(50)
+  description String?  @db.VarChar(255)
+  parentCode  String?  @map("parent_code") @db.VarChar(50)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  rolePermissions ModuleRolePermission[]
+
+  @@map("system_modules")
+}
+
+// 7. Dynamic Role-Based Access Control Permissions (by designation / role)
+model ModuleRolePermission {
+  id             Int          @id @default(autoincrement())
+  moduleId       Int          @map("module_id")
+  role           String       @db.VarChar(100)
+  hierarchyLevel Int          @default(0) @map("hierarchy_level")
+  orgId          Int          @default(0) @map("org_id")
+  canRead        Boolean      @default(false) @map("can_read")
+  canCreate      Boolean      @default(false) @map("can_create")
+  canUpdate      Boolean      @default(false) @map("can_update")
+  canDelete      Boolean      @default(false) @map("can_delete")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  module         SystemModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, role, hierarchyLevel, orgId], map: "uq_module_role_scope")
+  @@index([role], map: "idx_role")
+  @@index([hierarchyLevel], map: "idx_hierarchy_level")
+  @@index([orgId], map: "idx_org_id")
+  @@map("module_role_permissions")
+}
+

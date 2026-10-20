@@ -83,6 +83,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           position: result.position,
           positions: result.positions,
           requiresPositionSelection: needsPositionSelection,
+          isSystemAdmin: result.isSystemAdmin,
+          permissions: result.permissions,
         };
         setSession(nextSession);
         setSessionState(nextSession);
@@ -145,6 +147,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           position: result.position,
           positions: result.positions,
           requiresPositionSelection: needsPositionSelection,
+          isSystemAdmin: result.isSystemAdmin,
+          permissions: result.permissions,
         };
 
         setSession(nextSession);
@@ -201,6 +205,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           token: result.auth.token,
           position: result.position,
           requiresPositionSelection: false,
+          isSystemAdmin: result.isSystemAdmin ?? prev.isSystemAdmin,
+          permissions: result.permissions ?? prev.permissions,
         };
         setSession(next);
         return next;

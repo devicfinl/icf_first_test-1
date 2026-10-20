@@ -17,6 +17,9 @@ import PvPublicPage from "../pages/PvPublicPage";
 import PvAnalyticsPage from "../pages/PvAnalyticsPage";
 import PvSubscriberPage from "../pages/PvSubscriberPage";
 import PublicSubscriptionPage from "../pages/PublicSubscriptionPage";
+import AccessControlPage from "../pages/AccessControlPage";
+import PermissionGuard from "../components/auth/PermissionGuard";
+import { AppModule } from "../constants/modules";
 
 function AppRoute() {
   return (
@@ -44,13 +47,19 @@ function AppRoute() {
           <Route path="/" element={<Homepage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/access-control" element={<AccessControlPage />} />
           {/* Change password is a drawer now (?drawer=change-password); kept so old links still work. */}
           <Route path="/change-password" element={<Navigate to="/dashboard?drawer=change-password" replace />} />
-          <Route path="/pv/new" element={<PvNewSubscribersPage />} />
-          <Route path="/pv/renew" element={<PvRenewPage />} />
-          <Route path="/pv/public" element={<PvPublicPage />} />
-          <Route path="/pv/analytics" element={<PvAnalyticsPage />} />
-          <Route path="/pv/subscribers/:subscriberId" element={<PvSubscriberPage />} />
+
+          {/* Pravasi Vayana routes guarded by dynamic module permission */}
+          <Route element={<PermissionGuard module={AppModule.PV} action="read" />}>
+            <Route path="/pv/new" element={<PvNewSubscribersPage />} />
+            <Route path="/pv/renew" element={<PvRenewPage />} />
+            <Route path="/pv/public" element={<PvPublicPage />} />
+            <Route path="/pv/analytics" element={<PvAnalyticsPage />} />
+            <Route path="/pv/subscribers/:subscriberId" element={<PvSubscriberPage />} />
+          </Route>
+
           {/* Earlier paths, kept so old links still work. */}
           <Route path="/pv" element={<Navigate to="/pv/new" replace />} />
           <Route path="/pv/subscribers/new" element={<Navigate to="/pv/new" replace />} />

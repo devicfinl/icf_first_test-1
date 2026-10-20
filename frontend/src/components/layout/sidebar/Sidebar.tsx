@@ -19,6 +19,9 @@ import MeetingsSubmenu from "./MeetingsSubmenu";
 import PravasiVayanaSubmenu from "./PravasiVayanaSubmenu";
 import SettingsSubmenu from "./SettingsSubmenu";
 import SidebarLink from "./SidebarLink";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { AppModule } from "../../../constants/modules";
+import { ShieldCheck } from "lucide-react";
 
 type Props = {
   collapsed: boolean;
@@ -43,6 +46,7 @@ function Sidebar({ collapsed, onToggle, onNavigate, onSignOut }: Props) {
   const { pathname } = useLocation();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(() => menuFor(pathname));
   const [shownPath, setShownPath] = useState(pathname);
+  const { isSystemAdmin, canRead } = usePermissions();
 
   // Moving to a page in another submenu (e.g. from a dashboard shortcut) opens that one instead.
   if (pathname !== shownPath) {
@@ -80,22 +84,33 @@ function Sidebar({ collapsed, onToggle, onNavigate, onSignOut }: Props) {
         {!collapsed && <p className="mt-6 mb-2 px-3 text-[11px] font-medium tracking-wider text-[#555]">MAIN</p>}
         <div className="space-y-1.5">
           <SidebarLink label="Dashboard" icon={LayoutDashboard} to="/dashboard" showChevron {...entry} />
-          <SidebarLink label="Committee" icon={UsersRound} {...entry} />
-          <SidebarLink label="ICF Care" icon={HeartHandshake} showChevron {...entry} />
-          <MeetingsSubmenu {...entry} {...submenu("meetings")} />
-          <SidebarLink label="Siraj Subcriptions" icon={Newspaper} {...entry} />
-          <PravasiVayanaSubmenu {...entry} {...submenu("pv")} />
-          <SidebarLink label="Ayyuhananas" icon={BookMarked} {...entry} />
-          <SidebarLink label="Perfomence Review" icon={Gauge} {...entry} />
-          <SidebarLink label="Inbox" icon={Inbox} {...entry} />
-          <SidebarLink label="Organization" icon={Network} {...entry} />
-          <SidebarLink label="Forms" icon={ClipboardList} {...entry} />
-          <SidebarLink label="Members" icon={IdCard} showChevron {...entry} />
+          {canRead(AppModule.COMMITTEE) && <SidebarLink label="Committee" icon={UsersRound} {...entry} />}
+          {canRead(AppModule.ICF_CARE) && <SidebarLink label="ICF Care" icon={HeartHandshake} showChevron {...entry} />}
+          {canRead(AppModule.MEETINGS) && <MeetingsSubmenu {...entry} {...submenu("meetings")} />}
+          {canRead(AppModule.SIRAJ) && <SidebarLink label="Siraj Subcriptions" icon={Newspaper} {...entry} />}
+          {canRead(AppModule.PV) && <PravasiVayanaSubmenu {...entry} {...submenu("pv")} />}
+          {canRead(AppModule.AYYUHANANAS) && <SidebarLink label="Ayyuhananas" icon={BookMarked} {...entry} />}
+          {canRead(AppModule.PERFORMANCE_REVIEW) && <SidebarLink label="Perfomence Review" icon={Gauge} {...entry} />}
+          {canRead(AppModule.INBOX) && <SidebarLink label="Inbox" icon={Inbox} {...entry} />}
+          {canRead(AppModule.ORGANIZATION) && <SidebarLink label="Organization" icon={Network} {...entry} />}
+          {canRead(AppModule.FORMS) && <SidebarLink label="Forms" icon={ClipboardList} {...entry} />}
+          {canRead(AppModule.MEMBERS) && <SidebarLink label="Members" icon={IdCard} showChevron {...entry} />}
         </div>
       </nav>
 
       <div className="mt-5 border-t border-[#ece6df] px-4 pt-5">
         {!collapsed && <p className="mb-2 px-3 text-[11px] font-medium tracking-wider text-[#555]">SETTINGS</p>}
+        {isSystemAdmin && (
+          <div className="mb-1.5">
+            <SidebarLink
+              label="Access Control"
+              icon={ShieldCheck}
+              to="/access-control"
+              showChevron
+              {...entry}
+            />
+          </div>
+        )}
         <SettingsSubmenu {...entry} {...submenu("settings")} />
         <button
           type="button"

@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { env } from "./config/env.js";
 import { apiRateLimit } from "./middlewares/rate-limit.js";
 import { requestContext } from "./middlewares/request-context.js";
+import { accessControlRouter } from "./modules/access-control/access-control.routes.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { memberRouter } from "./modules/member/member.routes.js";
@@ -48,6 +49,7 @@ app.use(express.json({ limit: env.jsonBodyLimit }));
 app.use(apiRateLimit);
 
 app.use("/api/auth", authRouter);
+app.use("/api/access-control", accessControlRouter);
 app.use("/api/member", memberRouter);
 app.use("/api/pv", pvRouter);
 app.use("/api/public/pv", pvPublicRouter);

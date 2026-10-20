@@ -23,47 +23,51 @@ import { analysisPlaces, analysisSubscriptions, analysisSummary } from "./pv-ana
 import { saveTargets, targetsView } from "./pv-targets.controller.js";
 import { publicFormRateLimit } from "../../middlewares/rate-limit.js";
 import { requireAuth } from "../../middlewares/require-auth.js";
+import { requirePermission } from "../../middlewares/require-permission.js";
+import { AppModule } from "../../constants/modules.js";
 
 export const pvRouter = Router();
 
-// Every route is for leaders; the controller checks the leader's position on each request.
-pvRouter.get("/registration/context", requireAuth, registrationContext);
-pvRouter.get("/registration/children", requireAuth, childOrganisations);
-pvRouter.get("/registration/price", requireAuth, registrationPrice);
-pvRouter.post("/registrations", requireAuth, createRegistration);
-pvRouter.get("/registrations", requireAuth, listRegistrations);
-pvRouter.get("/analytics", requireAuth, registrationAnalytics);
-pvRouter.get("/targets", requireAuth, targetsView);
-pvRouter.get("/analysis/summary", requireAuth, analysisSummary);
-pvRouter.get("/analysis/subscriptions", requireAuth, analysisSubscriptions);
-pvRouter.get("/analysis/places", requireAuth, analysisPlaces);
-pvRouter.put("/targets", requireAuth, saveTargets);
-pvRouter.get("/subscribers/lookup", requireAuth, lookupSubscribers);
-pvRouter.get("/members/lookup", requireAuth, lookupMember);
-pvRouter.get("/renewals", requireAuth, listRenewals);
+// Every route is for authenticated users; permissions are checked per action and module.
+pvRouter.use(requireAuth);
+
+pvRouter.get("/registration/context", requirePermission(AppModule.PV, "read"), registrationContext);
+pvRouter.get("/registration/children", requirePermission(AppModule.PV, "read"), childOrganisations);
+pvRouter.get("/registration/price", requirePermission(AppModule.PV, "read"), registrationPrice);
+pvRouter.post("/registrations", requirePermission(AppModule.PV, "create"), createRegistration);
+pvRouter.get("/registrations", requirePermission(AppModule.PV, "read"), listRegistrations);
+pvRouter.get("/analytics", requirePermission(AppModule.PV, "read"), registrationAnalytics);
+pvRouter.get("/targets", requirePermission(AppModule.PV, "read"), targetsView);
+pvRouter.get("/analysis/summary", requirePermission(AppModule.PV, "read"), analysisSummary);
+pvRouter.get("/analysis/subscriptions", requirePermission(AppModule.PV, "read"), analysisSubscriptions);
+pvRouter.get("/analysis/places", requirePermission(AppModule.PV, "read"), analysisPlaces);
+pvRouter.put("/targets", requirePermission(AppModule.PV, "update"), saveTargets);
+pvRouter.get("/subscribers/lookup", requirePermission(AppModule.PV, "read"), lookupSubscribers);
+pvRouter.get("/members/lookup", requirePermission(AppModule.PV, "read"), lookupMember);
+pvRouter.get("/renewals", requirePermission(AppModule.PV, "read"), listRenewals);
 pvRouter.get(
   "/public-registrations",
-  requireAuth,
+  requirePermission(AppModule.PV, "read"),
   listPublicRegistrations,
 );
 pvRouter.post(
   "/public-registrations/:subscriber_id/approve",
-  requireAuth,
+  requirePermission(AppModule.PV, "update"),
   approvePublicRegistration,
 );
 pvRouter.post(
   "/public-registrations/:subscriber_id/reject",
-  requireAuth,
+  requirePermission(AppModule.PV, "update"),
   rejectPublicRegistration,
 );
 pvRouter.get(
   "/subscribers/:subscriber_id",
-  requireAuth,
+  requirePermission(AppModule.PV, "read"),
   subscriberDetails,
 );
 pvRouter.put(
   "/subscribers/:subscriber_id/subscriptions/:year",
-  requireAuth,
+  requirePermission(AppModule.PV, "update"),
   updateSubscription,
 );
 

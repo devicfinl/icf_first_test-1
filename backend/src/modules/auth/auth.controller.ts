@@ -12,7 +12,8 @@ import {
 } from "../../utils/jwt.js";
 import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { resolveOrganisationSummaries } from "../../utils/reference-data.js";
-import { resolveUserRoles } from "../../utils/rbac.js";
+import { isSystemAdmin, resolveUserRoles } from "../../utils/rbac.js";
+import { computeUserPermissions } from "../access-control/access-control.service.js";
 import { revokeToken } from "../../utils/token-denylist.js";
 import { sendError } from "../../utils/response.js";
 import { validate } from "../../utils/validate.js";
@@ -52,12 +53,24 @@ function tokenPayload(token: string) {
 }
 
 // Cabinet positions the member may act as: users.member_no -> membership_master.mid -> committee_members.cmem_id.
-async function cabinetPositions(memberNo: string): Promise<MemberPosition[]> {
+// Super Admin / Office users can also act as any of their committee positions (even non-cabinet) or a central office position.
+async function cabinetPositions(memberNo: string, isOffice: boolean = false): Promise<MemberPosition[]> {
   if (!memberNo) return [];
 
   const member = await prisma.membershipMaster.findFirst({ where: { membershipNo: memberNo } });
 
-  if (!member) return [];
+  if (!member) {
+    if (isOffice) {
+      return [
+        {
+          id: 0,
+          designation: { id: 0, name: "OFFICE_ADMIN", level: 0 },
+          organisation: { id: 0, name: "Central Office", level: "Central" },
+        },
+      ];
+    }
+    return [];
+  }
 
   const committeeMember = await prisma.committeeMember.findMany({
     where: { cmemId: member.mid },
@@ -65,20 +78,42 @@ async function cabinetPositions(memberNo: string): Promise<MemberPosition[]> {
     orderBy: { cmid: "asc" },
   });
 
-  if (committeeMember.length === 0) return [];
+  if (committeeMember.length === 0) {
+    if (isOffice) {
+      const user = await prisma.user.findFirst({ where: { memberNo }, select: { orgId: true } });
+      const org = user?.orgId
+        ? await prisma.organisationUnit.findUnique({
+            where: { orgid: user.orgId },
+            select: { orgid: true, orgname: true, hlevel: true },
+          })
+        : null;
+      return [
+        {
+          id: 0,
+          designation: { id: 0, name: "OFFICE_ADMIN", level: 0 },
+          organisation: { id: user?.orgId ?? 0, name: org?.orgname ?? "Central Office", level: org ? `Level ${org.hlevel}` : "Central" },
+        },
+      ];
+    }
+    return [];
+  }
 
   const [designations, organisations] = await Promise.all([
-    // Only cabinet designations can be a session context.
+    // Only cabinet designations can be a session context for regular members.
+    // Office users / Super Admins can use any of their committee positions.
     prisma.committeeDesignations.findMany({
-      where: { desid: { in: committeeMember.map((committeeMember) => committeeMember.cdesignId) }, isCabinet: "Y" },
+      where: {
+        desid: { in: committeeMember.map((cm) => cm.cdesignId) },
+        ...(isOffice ? {} : { isCabinet: "Y" }),
+      },
       select: { desid: true, desigName: true, desigLevel: true },
     }),
-    resolveOrganisationSummaries(committeeMember.map((committeeMember) => committeeMember.corgId)),
+    resolveOrganisationSummaries(committeeMember.map((cm) => cm.corgId)),
   ]);
 
   const cabinet = new Map(designations.map((designation) => [designation.desid, designation] as const));
 
-  return committeeMember.flatMap((membership) => {
+  const resolved = committeeMember.flatMap((membership) => {
     const designation = cabinet.get(membership.cdesignId);
 
     if (!designation) return [];
@@ -93,6 +128,25 @@ async function cabinetPositions(memberNo: string): Promise<MemberPosition[]> {
       },
     ];
   });
+
+  if (isOffice && resolved.length === 0) {
+    const user = await prisma.user.findFirst({ where: { memberNo }, select: { orgId: true } });
+    const org = user?.orgId
+      ? await prisma.organisationUnit.findUnique({
+          where: { orgid: user.orgId },
+          select: { orgid: true, orgname: true, hlevel: true },
+        })
+      : null;
+    return [
+      {
+        id: 0,
+        designation: { id: 0, name: "OFFICE_ADMIN", level: 0 },
+        organisation: { id: user?.orgId ?? 0, name: org?.orgname ?? "Central Office", level: org ? `Level ${org.hlevel}` : "Central" },
+      },
+    ];
+  }
+
+  return resolved;
 }
 
 // Re-read on every use: a member can be disabled while holding a still-valid token.
@@ -170,11 +224,12 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
 
   loginLimiter.clear(limiterKey);
 
-  const positions = await cabinetPositions(user.memberNo);
+  const isOffice = user.isOfficeUser === 1 || user.role === "1";
+  const positions = await cabinetPositions(user.memberNo, isOffice);
 
   // Only members holding a cabinet committee position (committee_designations.is_cabinet = 'Y')
-  // may sign in. Checked after the password, so it reveals nothing to someone guessing.
-  if (positions.length === 0) {
+  // may sign in. Super Admins and Office users bypass this restriction.
+  if (!isOffice && positions.length === 0) {
     throw new AppError("Only members holding a cabinet committee position can sign in.", 403);
   }
 
@@ -186,9 +241,9 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
   const roles = resolveUserRoles(user, positions);
   const activeRole = position ? position.designation.name : undefined;
 
-  // const message = requiresPositionSelection
-  //   ? "Login successful. Please select the committee position to continue with."
-  //   : "Login successful";
+  const isSysAdmin = isOffice || roles.includes("SUPER_ADMIN") || roles.includes("ADMIN");
+  const orgId = position?.organisation?.id ?? 0;
+  const permissions = await computeUserPermissions(activeRole ?? null, roles, isSysAdmin, { orgId });
 
   return next(
     new AppResponse("Login Successfull", {
@@ -204,6 +259,8 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
       name: user.name,
       roles,
       role: activeRole ?? null,
+      isSystemAdmin: isSysAdmin,
+      permissions,
       position,
       positions,
     }),
@@ -212,7 +269,8 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
 
 export const memberPositions = async (req: Request, res: Response, next: NextFunction) => {
   const user = await requireActiveUser(req.user!.userId);
-  const positions = await cabinetPositions(user.memberNo);
+  const isOffice = user.isOfficeUser === 1 || user.role === "1";
+  const positions = await cabinetPositions(user.memberNo, isOffice);
 
   return next(new AppResponse("Positions fetched successfully", { positions }));
 };
@@ -221,12 +279,17 @@ export const memberPositions = async (req: Request, res: Response, next: NextFun
 export const me = async (req: Request, res: Response, next: NextFunction) => {
   const authUser = req.user!;
   const user = await requireActiveUser(authUser.userId);
-  const positions = await cabinetPositions(user.memberNo);
+  const isOffice = user.isOfficeUser === 1 || user.role === "1";
+  const positions = await cabinetPositions(user.memberNo, isOffice);
 
   // Checked against the live list, not trusted from the token.
   const position = (authUser.position && positions.find((candidate) => candidate.id === authUser.position!.cmid)) ?? null;
   const roles = resolveUserRoles(user, positions);
   const activeRole = position?.designation.name ?? (authUser.role ?? null);
+
+  const isSysAdmin = isSystemAdmin(req);
+  const orgId = position?.organisation?.id ?? authUser.position?.orgid ?? 0;
+  const permissions = await computeUserPermissions(activeRole ?? null, roles, isSysAdmin, { orgId });
 
   return next(
     new AppResponse("Session is valid", {
@@ -234,6 +297,8 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
       name: user.name,
       roles,
       role: activeRole,
+      isSystemAdmin: isSysAdmin,
+      permissions,
       position,
       positions,
       expires_at: authUser.exp,
@@ -243,13 +308,14 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
 
 // Issues a token carrying the chosen position and revokes the old one.
 export const selectPosition = async (req: Request, res: Response, next: NextFunction) => {
-  await body("positionId").isInt({ min: 1 }).withMessage("Please choose one of your committee positions.").run(req);
+  await body("positionId").isInt({ min: 0 }).withMessage("Please choose one of your committee positions.").run(req);
   if (!validate(req, res)) return;
 
   const { positionId } = req.body;
 
   const user = await requireActiveUser(req.user!.userId);
-  const positions = await cabinetPositions(user.memberNo);
+  const isOffice = user.isOfficeUser === 1 || user.role === "1";
+  const positions = await cabinetPositions(user.memberNo, isOffice);
   const position = positions.find((pos) => pos.id === positionId);
 
   // Same answer for another member's position, so it can't be used to probe.
@@ -259,6 +325,10 @@ export const selectPosition = async (req: Request, res: Response, next: NextFunc
 
   const roles = resolveUserRoles(user, positions);
   const activeRole = position.designation.name;
+
+  const isSysAdmin = isOffice || roles.includes("SUPER_ADMIN") || roles.includes("ADMIN");
+  const posOrgId = position.organisation?.id ?? 0;
+  const permissions = await computeUserPermissions(activeRole ?? null, roles, isSysAdmin, { orgId: posOrgId });
 
   const token = signAccessToken(
     user.id,
@@ -274,6 +344,8 @@ export const selectPosition = async (req: Request, res: Response, next: NextFunc
       auth: tokenPayload(token),
       roles,
       role: activeRole,
+      isSystemAdmin: isSysAdmin,
+      permissions,
       position,
     }),
   );

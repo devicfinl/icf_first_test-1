@@ -16,6 +16,15 @@ export type AuthToken = {
   expires_in: number;
 };
 
+export type CrudPermissions = {
+  read: boolean;
+  create: boolean;
+  update: boolean;
+  delete: boolean;
+};
+
+export type PermissionsMap = Record<string, CrudPermissions>;
+
 /** A committee position the member may act as for the session. */
 export type MemberPosition = {
   id: number;
@@ -30,7 +39,8 @@ export type LoginData = {
   /** Already applied to the token when the member holds exactly one cabinet position. */
   position: MemberPosition | null;
   positions: MemberPosition[];
-
+  isSystemAdmin?: boolean;
+  permissions?: PermissionsMap;
 };
 
 /** GET /auth/me: the session behind the caller's token, used to restore it on page load. */
@@ -39,11 +49,18 @@ export type CurrentSessionData = {
   name: string;
   position: MemberPosition | null;
   positions: MemberPosition[];
+  isSystemAdmin?: boolean;
+  permissions?: PermissionsMap;
   /** Seconds since the epoch. */
   expires_at: number;
 };
 
-export type SelectPositionData = { auth: AuthToken; position: MemberPosition };
+export type SelectPositionData = {
+  auth: AuthToken;
+  position: MemberPosition;
+  isSystemAdmin?: boolean;
+  permissions?: PermissionsMap;
+};
 export type ChangePasswordData = { auth: AuthToken };
 export type PositionsData = { positions: MemberPosition[] };
 
@@ -102,4 +119,6 @@ export type Session = {
   position: MemberPosition | null;
   positions: MemberPosition[];
   requiresPositionSelection: boolean;
+  isSystemAdmin?: boolean;
+  permissions?: PermissionsMap;
 };
