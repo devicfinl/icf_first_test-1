@@ -15,10 +15,14 @@ export type RegistrationContext = {
 
 export const SUBSCRIPTION_MODES = ["Print", "Digital", "Print&Digital"] as const;
 export type SubscriptionMode = (typeof SUBSCRIPTION_MODES)[number];
+/** The modes a new subscription can choose; Print&Digital is kept above only for old records. */
+export const SELECTABLE_SUBSCRIPTION_MODES = ["Print", "Digital"] as const satisfies readonly SubscriptionMode[];
 
 /** GET /pv/registration/price: the open campaign for the unit's country. */
 export type RegistrationPrice = {
   country_code: string;
+  /** The country's phone code, e.g. "968"; null when it is not known. */
+  phone_code: string | null;
   year: number;
   currency: string;
   campaign_status: string | null;

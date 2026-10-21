@@ -256,10 +256,11 @@ country (Saudi has a Chapter level, some countries have no Division).
 ### `GET /api/pv/registration/price?unit_id=`
 
 The open (not Closed) campaign in `vayana_subscription` for the unit's country. A price that is not
-set is `null`.
+set is `null`. `phone_code` is the country's phone code from `countries` (`null` when not known); the
+form starts the mobile and WhatsApp codes with it.
 
 ```json
-{ "country_code": "OM", "year": 2027, "currency": "OMR", "campaign_status": "Open",
+{ "country_code": "OM", "phone_code": "968", "year": 2027, "currency": "OMR", "campaign_status": "Open",
   "prices": { "Print": 5, "Digital": 3.5, "Print&Digital": 6 } }
 ```
 

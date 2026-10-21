@@ -13,7 +13,7 @@ import YesNoSwitch from "./YesNoSwitch";
 import { formatAmount, includesPrint } from "../../lib/pv";
 import { useSubscriberForm } from "../../hooks/useSubscriberForm";
 import type { PriceState } from "../../hooks/useRegistrationPrice";
-import { SUBSCRIPTION_MODES } from "../../types/pv";
+import { SELECTABLE_SUBSCRIPTION_MODES } from "../../types/pv";
 
 type Props = {
   /** Currency and prices for the chosen unit; null while loading. */
@@ -61,7 +61,7 @@ function SubscriptionStep({ price, showCashReceived, submitLabel = "Save And Con
             {...register("subscriptionMode")}
           >
             <NativeSelectOption value="">Choose a mode</NativeSelectOption>
-            {SUBSCRIPTION_MODES.map((option) => {
+            {SELECTABLE_SUBSCRIPTION_MODES.map((option) => {
               const optionPrice = price?.value?.prices[option] ?? null;
               return (
                 <NativeSelectOption key={option} value={option} disabled={Boolean(price?.value) && optionPrice === null}>

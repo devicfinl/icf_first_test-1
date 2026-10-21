@@ -191,9 +191,9 @@ function PvPublicPage() {
         </div>
 
         {items.length === 0 && (
-          <p className="border-b border-[#e7e1da] px-2.5 py-10 text-center text-[14px] text-[#6b6b6b]">
-            {loading ? <Loader variant="inline" /> : pending ? "No registrations waiting for approval." : "Nothing here yet."}
-          </p>
+          <div className="border-b border-[#e7e1da] px-2.5 py-10 text-center text-[14px] text-[#6b6b6b]">
+            {loading ? <Loader variant="rows" className="text-left" /> : pending ? "No registrations waiting for approval." : "Nothing here yet."}
+          </div>
         )}
 
         <TablePager

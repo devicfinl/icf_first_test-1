@@ -345,7 +345,7 @@ function SubscriptionsTable({ tab, filters, sort, dir, page, pageSize, onChange 
           <AlertDescription>{shown.error}</AlertDescription>
         </Alert>
       )}
-      {!shown && <Loader label="Loading subscriptions…" className="mt-4 min-h-[240px]" />}
+      {!shown && <Loader variant="rows" label="Loading subscriptions…" className="mt-4 py-4" />}
 
       {data && data.rows.length === 0 && (
         <p className="mt-6 rounded-xl bg-[#faf7f3] px-4 py-8 text-center text-[14px] text-[#6b6b6b]">

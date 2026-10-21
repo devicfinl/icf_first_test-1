@@ -1,4 +1,4 @@
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Props = { years: number[]; value: number | null; onChange: (year: number) => void };
 
@@ -7,18 +7,18 @@ function YearSelect({ years, value, onChange }: Props) {
   if (years.length < 2) return null;
 
   return (
-    <NativeSelect
-      aria-label="Year"
-      value={value ?? ""}
-      onChange={(event) => onChange(Number(event.target.value))}
-      className="[&_select]:h-10 [&_select]:rounded-full [&_select]:bg-white [&_select]:pl-4"
-    >
-      {years.map((year) => (
-        <NativeSelectOption key={year} value={year}>
-          {year}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+    <Select value={value !== null ? String(value) : undefined} onValueChange={(next) => onChange(Number(next))}>
+      <SelectTrigger aria-label="Year" className="h-10! min-w-28 rounded-full bg-white pl-4">
+        <SelectValue placeholder="Year" />
+      </SelectTrigger>
+      <SelectContent position="popper" align="end">
+        {years.map((year) => (
+          <SelectItem key={year} value={String(year)}>
+            {year}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

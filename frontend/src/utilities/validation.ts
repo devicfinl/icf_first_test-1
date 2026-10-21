@@ -83,7 +83,7 @@ export const addSubscriberSchema = z
     email: z.union([z.literal(""), z.email("Please enter a valid email address.").max(320)]),
     contactPersonName: pvOptional("the contact person / sponsor"),
     // Step 2
-    subscriptionMode: z.enum(["Print", "Digital", "Print&Digital"], {
+    subscriptionMode: z.enum(["Print", "Digital"], {
       error: "Please choose a subscription mode.",
     }),
     distributorArea: pvOptional("the distribution lead"),

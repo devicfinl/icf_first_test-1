@@ -27,7 +27,7 @@ export const EMPTY_SUBSCRIBER_FORM: AddSubscriberFormInput = {
   whatsapp: "",
   email: "",
   contactPersonName: "",
-  subscriptionMode: undefined as unknown as SubscriptionMode,
+  subscriptionMode: undefined as unknown as AddSubscriberFormInput["subscriptionMode"],
   distributorArea: "",
   deliveryResponsibility: "",
   cashReceived: "N",
@@ -109,11 +109,15 @@ export function formFromExisting(subscriber: ExistingSubscriber): Partial<AddSub
     area: text(previous.area),
     province: text(previous.province),
     contactPersonName: text(previous.contact_person_name),
-    subscriptionMode: previous.subscription_mode,
+    subscriptionMode: formMode(previous.subscription_mode),
     distributorArea: text(previous.distributor_area),
     deliveryResponsibility: includesPrint(previous.subscription_mode) ? text(previous.delivery_responsibility) : "",
   };
 }
+
+/** An old Print&Digital subscription can no longer be chosen, so the form starts blank for it. */
+const formMode = (mode: SubscriptionMode) =>
+  (mode === "Print&Digital" ? undefined : mode) as AddSubscriberFormInput["subscriptionMode"];
 
 /** "Print&Digital" -> "Print & Digital", for display. */
 export const modeLabel = (mode: SubscriptionMode) => mode.replace("&", " & ");
@@ -148,7 +152,7 @@ export function formFromView(view: SubscriberView): AddSubscriberFormInput {
     area: text(subscription.area),
     province: text(subscription.province),
     contactPersonName: text(subscription.contact_person_name),
-    subscriptionMode: subscription.subscription_mode,
+    subscriptionMode: formMode(subscription.subscription_mode),
     distributorArea: text(subscription.distributor_area),
     deliveryResponsibility: includesPrint(subscription.subscription_mode) ? text(subscription.delivery_responsibility) : "",
     cashReceived: subscription.cash_received === "Y" ? "Y" : "N",

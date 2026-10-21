@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { SlidersHorizontal, Target } from "lucide-react";
+import { Plus, SlidersHorizontal, Target } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Loader from "../components/loading-ui/Loader";
 import FormPanel from "../components/layout/FormPanel";
 
+import AddSubscriberDrawer from "../components/pv/AddSubscriberDrawer";
 import AnalyticsBreakdown from "../components/pv/AnalyticsBreakdown";
 import PlaceProgressList from "../components/pv/PlaceProgressList";
 import PvPageHeader from "../components/pv/PvPageHeader";
@@ -33,9 +34,12 @@ function PvAnalyticsPage() {
   const [summary, setSummary] = useState<{ key: string; data?: AnalysisSummary; error?: string } | null>(null);
   const [settingTarget, setSettingTarget] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  // Bumped after a new subscriber is saved, to load the figures again.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const overview = tab === "overview";
-  const overviewKey = `${filters.year}:${filters.orgId}`;
+  const overviewKey = `${filters.year}:${filters.orgId}:${refreshKey}`;
   useEffect(() => {
     if (!overview) return;
     let current = true;
@@ -45,12 +49,12 @@ function PvAnalyticsPage() {
     return () => {
       current = false;
     };
-    // overviewKey covers year and place.
+    // overviewKey covers year, place and refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview, overviewKey]);
 
   // The cards above the analysis tabs; also the years and the place's trail.
-  const summaryKey = JSON.stringify(filters);
+  const summaryKey = `${JSON.stringify(filters)}:${refreshKey}`;
   useEffect(() => {
     if (overview) return;
     let current = true;
@@ -60,7 +64,7 @@ function PvAnalyticsPage() {
     return () => {
       current = false;
     };
-    // summaryKey covers the filters.
+    // summaryKey covers the filters and refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview, summaryKey]);
 
@@ -105,9 +109,14 @@ function PvAnalyticsPage() {
           <Target />
           Set Target
         </Button>
+        <Button className="bg-clay text-white hover:bg-clay/90" onClick={() => setAdding(true)}>
+          <Plus />
+          Add New
+        </Button>
       </PvPageHeader>
 
       <SetTargetDrawer open={settingTarget} onOpenChange={setSettingTarget} />
+      <AddSubscriberDrawer open={adding} onOpenChange={setAdding} onSaved={() => setRefreshKey((value) => value + 1)} />
 
       {!isUnit && (
         <nav aria-label="Analysis" className="overflow-x-auto rounded-2xl bg-white p-1">

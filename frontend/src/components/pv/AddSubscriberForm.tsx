@@ -98,6 +98,24 @@ function AddSubscriberForm({
 
   const unitId = useWatch({ control, name: "unitId" });
   const price = useRegistrationPrice(source.loadPrice, unitId);
+
+  // Start blank mobile and WhatsApp codes with the unit's country code. Not marked dirty, so it
+  // alone does not count as an unsaved change.
+  const phoneCode = price?.value?.phone_code;
+  useEffect(() => {
+    if (!phoneCode) return;
+    if (!getValues("mobileCountry")) setValue("mobileCountry", phoneCode);
+    if (!getValues("whatsappCountry")) setValue("whatsappCountry", phoneCode);
+  }, [phoneCode, getValues, setValue]);
+
+  // Errors normally show only when a step is checked. Once a field shows one, check it again as
+  // it changes, so the error (and the red) goes as soon as the value is valid.
+  useEffect(() => {
+    const subscription = form.watch((_, { name }) => {
+      if (name && form.getFieldState(name).error) void trigger(name);
+    });
+    return () => subscription.unsubscribe();
+  }, [form, trigger]);
   const { levels, loadLevel, choosePlace, selectPath } = useOrganisationLevels(source.loadChildren, (chosen) =>
     chosen
       ? setValue("unitId", chosen, { shouldDirty: true, shouldValidate: true })
