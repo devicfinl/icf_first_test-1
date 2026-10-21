@@ -1,8 +1,7 @@
 // One command per Pravasi Vayana targets migration: back up the table it changes, run the
 // SQL file, then show the first rows of the targets table. Stops at the first failure.
 //
-//   npm run db:migrate:pv-targets        (from backend/) pv-targets-create-new-table.sql
-//   npm run db:migrate:pv-campaigns      (from backend/) pv-targets-add-campaign.sql
+//   npm run db:migrate:pv-targets        (from backend/) pv-targets.sql
 //
 // Arguments: <file in backend/sql/> <table to back up first>.
 //

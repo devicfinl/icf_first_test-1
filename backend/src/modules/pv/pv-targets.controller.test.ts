@@ -53,21 +53,23 @@ const SUBS = [
 
 type Target = {
   id: number; setByOrg: number; setByLevel: string; setByName: string; setToOrg: number; setToLevel: string;
-  setToName: string; targetPrint: number; targetDigital: number; campaign_status: string;
+  setToName: string; targetYear: number; targetPrint: number; targetDigital: number; campaign_status: string;
 };
-const target = (id: number, by: number, to: number, print: number, digital: number, status: string): Target => ({
+const target = (id: number, by: number, to: number, print: number, digital: number, status: string, year = 2027): Target => ({
   id, setByOrg: by, setByLevel: orgById.get(by)!.level, setByName: orgById.get(by)!.name, setToOrg: to,
-  setToLevel: orgById.get(to)!.level, setToName: orgById.get(to)!.name, targetPrint: print, targetDigital: digital,
-  campaign_status: status,
+  setToLevel: orgById.get(to)!.level, setToName: orgById.get(to)!.name, targetYear: year, targetPrint: print,
+  targetDigital: digital, campaign_status: status,
 });
-// International -> Oman 100/150; Oman -> Muscat 40/60 and a Sohar draft; Muscat -> Bousher 50/10,
-// more print than Muscat has; an old Closed row for Muscat that must be ignored.
+// The 2027 campaign: International -> Oman 100/150; Oman -> Muscat 40/60 and a Sohar draft;
+// Muscat -> Bousher 50/10, more print than Muscat has; an old row of another status for Muscat
+// that must be ignored. The 2026 campaign, closed: International -> Oman 70/80.
 const initialTargets = () => [
   target(0, 1, 2, 100, 150, "Active"),
   target(1, 2, 60, 40, 60, "Active"),
   target(2, 2, 61, 10, 10, "Draft"),
   target(3, 60, 70, 50, 10, "Active"),
-  target(4, 2, 60, 999, 999, "Closed"),
+  target(4, 2, 60, 999, 999, "Cancelled"),
+  target(5, 1, 2, 70, 80, "Closed", 2026),
 ];
 let TARGETS: Target[] = initialTargets();
 beforeEach(() => {
@@ -75,9 +77,20 @@ beforeEach(() => {
 });
 
 function fakeQueryRaw(sql: string, ...values: any[]) {
+  const inUse = (row: Target) => ["Active", "Draft", "Closed"].includes(row.campaign_status);
+  if (sql.includes("SELECT targetYear AS year")) {
+    const years = [...new Set(TARGETS.filter(inUse).map((row) => row.targetYear))].sort((a, b) => b - a);
+    return years.map((year) => ({
+      year,
+      closed: TARGETS.some((row) => row.targetYear === year && row.campaign_status === "Closed") ? 1 : 0,
+    }));
+  }
   if (sql.includes("FROM vayana_subscription_entity_new")) {
+    // The place ids, then the year.
     const column = sql.includes("WHERE setToOrg IN") ? "setToOrg" : "setByOrg";
-    return TARGETS.filter((row) => values.includes(row[column]) && ["Active", "Draft"].includes(row.campaign_status))
+    const ids = values.slice(0, -1);
+    const year = values.at(-1);
+    return TARGETS.filter((row) => ids.includes(row[column]) && row.targetYear === year && inUse(row))
       .sort((a, b) => b.id - a.id)
       .map(({ id, setByOrg, setToOrg, targetPrint, targetDigital, campaign_status }) => ({
         id, setByOrg, setToOrg, targetPrint, targetDigital, campaign_status,
@@ -106,10 +119,11 @@ function fakeExecuteRaw(sql: string, ...values: any[]) {
     Object.assign(row, { setByOrg, setByLevel, setByName, setToLevel, setToName, targetPrint, targetDigital, campaign_status: status });
     return 1;
   }
-  const [setByOrg, setByLevel, setByName, setToOrg, setToLevel, setToName, targetPrint, targetDigital, status] = values;
+  const [setByOrg, setByLevel, setByName, setToOrg, setToLevel, setToName, targetYear, targetPrint, targetDigital, status] = values;
   TARGETS.push({
     id: Math.max(-1, ...TARGETS.map((t) => t.id)) + 1,
-    setByOrg, setByLevel, setByName, setToOrg, setToLevel, setToName, targetPrint, targetDigital, campaign_status: status,
+    setByOrg, setByLevel, setByName, setToOrg, setToLevel, setToName, targetYear, targetPrint, targetDigital,
+    campaign_status: status,
   });
   return 1;
 }
@@ -207,11 +221,15 @@ async function call(handler: Handler, person: Person, { query, body }: { query?:
   return res;
 }
 
-const view = (person: Person, orgId?: number) =>
-  call(controller.targetsView, person, { query: orgId === undefined ? {} : { org_id: orgId } });
-const save = (person: Person, body: object) => call(controller.saveTargets, person, { body });
-const rowFor = (to: number) =>
-  TARGETS.filter((t) => t.setToOrg === to && ["Active", "Draft"].includes(t.campaign_status)).sort((a, b) => b.id - a.id)[0];
+const view = (person: Person, orgId?: number, year?: number) =>
+  call(controller.targetsView, person, {
+    query: { ...(orgId === undefined ? {} : { org_id: orgId }), ...(year === undefined ? {} : { year }) },
+  });
+// For the 2027 campaign unless the body says otherwise.
+const save = (person: Person, body: object) => call(controller.saveTargets, person, { body: { year: 2027, ...body } });
+const rowFor = (to: number, year = 2027) =>
+  TARGETS.filter((t) => t.setToOrg === to && t.targetYear === year && ["Active", "Draft", "Closed"].includes(t.campaign_status))
+    .sort((a, b) => b.id - a.id)[0];
 
 /* ------------------------------------------------------------------ view */
 
@@ -245,7 +263,7 @@ test("view: a draft is not given yet, so the Region it is for cannot share it ou
   assert.equal(data.own, null);
   assert.equal(data.remaining, null);
   assert.equal(data.can_allocate, false);
-  assert.equal(data.blocked_reason, "Your target has not been set by the country yet.");
+  assert.equal(data.blocked_reason, "Your 2027 target has not been set by the country yet.");
 });
 
 test("view: a higher level drills into a place below as view-only; outside the branch is refused", async () => {
@@ -268,9 +286,9 @@ test("view: a unit sees its own target and achieved, with nothing to share out",
   assert.deepEqual(data.achieved, { print: 1, digital: 0, total: 1 });
 });
 
-test("view: International counts each country for its own open year", async () => {
+test("view: International counts every country for the year shown", async () => {
   const data = (await view(PEOPLE.international)).body.data;
-  assert.equal(data.year, null);
+  assert.equal(data.year, 2027);
   assert.equal(data.can_edit_own, true);
   assert.equal(data.can_allocate, true);
   assert.deepEqual(data.children.map((c: any) => [c.name, c.status]), [["Oman", "Set"], ["Saudi", "Not set"]]);
@@ -346,4 +364,88 @@ test("save: targets must be whole numbers, 0 or more", async () => {
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.message, "Targets must be whole numbers, 0 or more.");
   }
+});
+
+/* ------------------------------------------------------------------ campaign years */
+
+test("years: the latest year with targets by default; a closed earlier year is shown view-only", async () => {
+  const latest = (await view(PEOPLE.international)).body.data;
+  assert.equal(latest.year, 2027);
+  assert.deepEqual(latest.years, [2027, 2026]);
+  assert.equal(latest.next_year, 2028);
+  // 2027 is still open, so 2028 cannot be started yet.
+  assert.equal(latest.can_start_next, false);
+
+  assert.equal(latest.closed, false);
+
+  const past = (await view(PEOPLE.international, undefined, 2026)).body.data;
+  assert.equal(past.closed, true);
+  // Oman's 2026 target, not its 2027 one.
+  assert.deepEqual(past.children[0].target, { print: 70, digital: 80, total: 150 });
+  // 2026 subscriptions are counted for 2026: unit 80's one print.
+  assert.deepEqual(past.achieved, { print: 1, digital: 0, total: 1 });
+  assert.equal(past.can_edit_own, false);
+  assert.equal(past.can_allocate, false);
+  assert.equal(past.blocked_reason, "The 2026 campaign is closed: its targets can no longer be changed.");
+  // A closed year's target still counts as set.
+  assert.equal(past.children[0].status, "Set");
+
+  const refused = await save(PEOPLE.international, { year: 2026, status: "Active", own: { print: 1, digital: 1 }, children: [] });
+  assert.equal(refused.statusCode, 400);
+  assert.equal(refused.body.message, "The 2026 campaign is closed: its targets can no longer be changed.");
+  assert.equal(rowFor(2, 2026)!.targetPrint, 70);
+});
+
+test("years: International starts the next campaign once the current one is closed", async () => {
+  // While 2027 is open, 2028 cannot be started.
+  const early = await save(PEOPLE.international, { year: 2028, status: "Active", own: { print: 1, digital: 1 }, children: [] });
+  assert.equal(early.statusCode, 400);
+  assert.equal(early.body.message, "The 2028 targets can be set once the 2027 campaign is closed.");
+
+  // 2027 closes.
+  for (const row of TARGETS) if (row.targetYear === 2027) row.campaign_status = "Closed";
+  assert.equal((await view(PEOPLE.international)).body.data.can_start_next, true);
+
+  // Nothing is set for 2028 yet, and the countries cannot share anything out.
+  const before = (await view(PEOPLE.national, undefined, 2028)).body.data;
+  assert.equal(before.own, null);
+  assert.equal(before.can_allocate, false);
+  assert.equal(before.blocked_reason, "Your 2028 target has not been set by International yet.");
+  assert.equal(before.can_start_next, false);
+
+  const res = await save(PEOPLE.international, {
+    year: 2028,
+    status: "Active",
+    own: { print: 500, digital: 500 },
+    children: [{ org_id: 2, print: 200, digital: 300 }],
+  });
+  assert.equal(res.statusCode, 200, res.body.message);
+  assert.equal(rowFor(2, 2028)!.targetYear, 2028);
+  // 2027 is untouched, and view-only.
+  assert.equal(rowFor(2)!.targetPrint, 100);
+
+  const now = (await view(PEOPLE.national)).body.data;
+  assert.equal(now.year, 2028);
+  assert.deepEqual(now.own, { print: 200, digital: 300, total: 500, status: "Active" });
+  assert.equal(now.can_allocate, true);
+  assert.equal((await view(PEOPLE.national, undefined, 2027)).body.data.can_allocate, false);
+
+  // Two years ahead is not open yet.
+  const ahead = await save(PEOPLE.international, { year: 2030, status: "Active", own: { print: 1, digital: 1 }, children: [] });
+  assert.equal(ahead.statusCode, 400);
+});
+
+test("years: a closed year that is the only one is view-only; International starts the next", async () => {
+  // Only the closed 2026 campaign: it is shown by default, and 2027 is offered next.
+  TARGETS = TARGETS.filter((row) => row.targetYear === 2026);
+  const data = (await view(PEOPLE.international)).body.data;
+  assert.equal(data.year, 2026);
+  assert.equal(data.closed, true);
+  assert.equal(data.can_edit_own, false);
+  assert.equal(data.next_year, 2027);
+  assert.equal(data.can_start_next, true);
+
+  const res = await save(PEOPLE.international, { year: 2027, status: "Active", own: { print: 10, digital: 10 }, children: [] });
+  assert.equal(res.statusCode, 200, res.body.message);
+  assert.equal((await view(PEOPLE.international)).body.data.year, 2027);
 });

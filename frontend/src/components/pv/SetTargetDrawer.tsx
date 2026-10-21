@@ -18,19 +18,21 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
-/** A place below the leader's, view-only: how it shared out its target. */
-function TargetsView({ orgId, onBack, onOpen }: { orgId: number; onBack: () => void; onOpen: (id: number) => void }) {
+type ViewProps = { orgId: number; year: number | undefined; onBack: () => void; onOpen: (id: number) => void };
+
+/** A place below the leader's, view-only: how it shared out its target for the year shown. */
+function TargetsView({ orgId, year, onBack, onOpen }: ViewProps) {
   const [result, setResult] = useState<{ id: number; data?: PvTargets; error?: string } | null>(null);
 
   useEffect(() => {
     let current = true;
-    fetchPvTargets(orgId)
+    fetchPvTargets(orgId, year)
       .then((data) => current && setResult({ id: orgId, data }))
       .catch((failure) => current && setResult({ id: orgId, error: apiErrorMessage(failure, "Could not load the targets.") }));
     return () => {
       current = false;
     };
-  }, [orgId]);
+  }, [orgId, year]);
 
   const shown = result?.id === orgId ? result : null;
   const data = shown?.data;
@@ -50,7 +52,8 @@ function TargetsView({ orgId, onBack, onOpen }: { orgId: number; onBack: () => v
           <h2 className="text-[20px] font-semibold text-navy">{data?.place.name ?? "Targets"}</h2>
           {data && (
             <p className="text-[13px] text-[#6b6b6b]">
-              {levelLabel(data.place.level)} · view only{data.own?.status === "Draft" ? " · draft" : ""}
+              {levelLabel(data.place.level)} · {data.year}
+              {data.closed ? " · closed" : ""} · view only{data.own?.status === "Draft" ? " · draft" : ""}
             </p>
           )}
         </div>
@@ -85,6 +88,8 @@ function SetTargetDrawer({ open, onOpenChange }: Props) {
     dirty.current = value;
   }, []);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // The campaign year the editor shows; the places opened from it show the same one.
+  const [year, setYear] = useState<number | undefined>(undefined);
 
   function close() {
     dirty.current = false;
@@ -112,12 +117,13 @@ function SetTargetDrawer({ open, onOpenChange }: Props) {
         {open && (
           <>
             <div className={shownId === undefined ? undefined : "hidden"}>
-              <TargetsEditor onOpen={push} onDirtyChange={setDirty} />
+              <TargetsEditor onOpen={push} onDirtyChange={setDirty} onYearChange={setYear} />
             </div>
             {shownId !== undefined && (
               <TargetsView
                 key={shownId}
                 orgId={shownId}
+                year={year}
                 onBack={() => setStack((ids) => ids.slice(0, -1))}
                 onOpen={push}
               />

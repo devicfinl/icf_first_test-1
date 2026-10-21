@@ -2,13 +2,23 @@
 -- Migrate vayana_master_single -> pv_subscription_master + pv_subscription_details
 -- MySQL 8. Spec: docs/Migrate.md
 --
--- How to run (mysql CLI, against the target database):
+-- How to run (from backend/; no backup is taken):
+--   npm run db:migrate:pv-subscriptions           DRY RUN
+--   npm run db:migrate:pv-subscriptions:commit    keeps the data if every check passes
+-- (add :local to either for the database in .env.local), or with the mysql CLI:
 --   mysql ... < backend/sql/migrate-pv-subscriptions.sql
 --
 -- By default this is a DRY RUN: every step and check runs, the report is printed, and then
--- everything is rolled back. To keep the data, change the last line to CALL pv_migrate(1).
+-- everything is rolled back. The :commit command sets @pv_commit = 1 to keep the data; with
+-- the mysql CLI, run SET @pv_commit = 1; first in the same session.
 -- The script is re-runnable: each run clears both target tables before loading them again.
 -- WARNING: it DELETES everything currently in pv_subscription_master and pv_subscription_details.
+--
+-- Ledger numbers: every subscriber gets one of their own (see "Ledger numbers" below). The
+-- legacy sequence stopped at PV100000, which was written on 12,000+ rows; those, missing and
+-- malformed numbers, and numbers shared by several subscribers get new numbers after the
+-- highest one in use, in order of first subscription. Valid numbers that only one subscriber
+-- has are kept.
 --
 -- subscription_id links each subscription to the price table (docs: backend/src/modules/pv/task.md
 -- section 3.1), and currency comes from countries. Both are found through the unit's country:
@@ -199,6 +209,7 @@ DROP PROCEDURE IF EXISTS pv_migrate $$
 CREATE PROCEDURE pv_migrate(IN p_commit TINYINT)
 main: BEGIN
   DECLARE v_failures INT DEFAULT 0;
+  DECLARE v_ledger_start BIGINT;
 
   -- Any SQL error (bad value for a column, FK violation, ...) undoes everything and says why.
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -213,7 +224,7 @@ main: BEGIN
 
   -- Leftovers from an earlier run in this same session.
   DROP TEMPORARY TABLE IF EXISTS tmp_src, tmp_subscriber, tmp_members, tmp_map, tmp_users, tmp_checks,
-                                 tmp_unit_country, tmp_currency, tmp_price;
+                                 tmp_unit_country, tmp_currency, tmp_price, tmp_ledger_new;
 
   CREATE TEMPORARY TABLE tmp_checks (
     seq        INT AUTO_INCREMENT PRIMARY KEY,
@@ -546,6 +557,8 @@ main: BEGIN
     SUBSTRING_INDEX(GROUP_CONCAT(is_icf_member    ORDER BY created_at DESC, id DESC SEPARATOR '|#|'), '|#|', 1) AS is_icf_member,
     -- Filled only by the membership_master lookup below.
     CAST(NULL AS CHAR(100)) AS membership_id,
+    -- Why the ledger number was replaced (missing / malformed / duplicate); NULL = kept.
+    CAST(NULL AS CHAR(20)) AS ledger_reason,
     MIN(created_at) AS first_subscribed_at,
     -- Name + mobile key, normalised (name = letters only, lower case; mobile and country =
     -- digits only). NULL without a usable mobile (7+ digits): such a subscriber can't be matched.
@@ -586,6 +599,53 @@ main: BEGIN
   SET sub.membership_id = IF(m.n_members = 1, m.membership_no, NULL),
       sub.member_matched = IF(m.n_members = 1, 1, 2)
   WHERE sub.is_icf_member = 'Yes';
+
+  -- ===================================================================================
+  -- Ledger numbers: one per subscriber, never shared.
+  -- ledger_no above is the subscriber's latest legacy number (PV100000 already became NULL).
+  --   kept:      a valid number (PV + digits) that no earlier subscriber has
+  --   replaced:  missing (NULL, which includes PV100000), malformed (e.g. "PV"), or a number an
+  --              earlier subscriber already has (the earliest keeps it)
+  -- New numbers start one after the highest valid number on any legacy row, never below
+  -- PV100001, and are handed out in subscriber_id order, which is order of first subscription.
+  -- ===================================================================================
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'pre: legacy rows with ledger PV100000 (info)', '-', COUNT(*), 1
+    FROM vayana_master_single WHERE TRIM(LedgerNo) = 'PV100000';
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'pre: legacy rows with no ledger number (info)', '-', COUNT(*), 1
+    FROM vayana_master_single WHERE NULLIF(TRIM(LedgerNo), '') IS NULL;
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'pre: subscribers without a valid ledger number (info)', '-', COUNT(*), 1
+    FROM tmp_subscriber WHERE ledger_no IS NULL OR ledger_no NOT REGEXP '^PV[0-9]+$';
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'pre: ledger numbers shared by several subscribers (info)', '-', COUNT(*), 1
+    FROM (SELECT ledger_no FROM tmp_subscriber WHERE ledger_no IS NOT NULL
+          GROUP BY ledger_no HAVING COUNT(*) > 1) shared;
+
+  SELECT GREATEST(100000, IFNULL(MAX(CAST(SUBSTRING(ledger_no, 3) AS UNSIGNED)), 0)) + 1
+    INTO v_ledger_start
+    FROM tmp_src
+   WHERE ledger_no REGEXP '^PV[0-9]+$';
+
+  CREATE TEMPORARY TABLE tmp_ledger_new (PRIMARY KEY (subscriber_id), UNIQUE KEY (new_ledger_no)) AS
+  SELECT subscriber_id,
+         CONCAT('PV', v_ledger_start - 1 + ROW_NUMBER() OVER (ORDER BY subscriber_id)) AS new_ledger_no,
+         reason
+  FROM (
+    SELECT subscriber_id,
+           CASE WHEN ledger_no IS NULL                   THEN 'missing'
+                WHEN ledger_no NOT REGEXP '^PV[0-9]+$'   THEN 'malformed'
+                WHEN ROW_NUMBER() OVER (PARTITION BY ledger_no ORDER BY subscriber_id) > 1 THEN 'duplicate'
+           END AS reason
+    FROM tmp_subscriber
+  ) ranked
+  WHERE reason IS NOT NULL;
+
+  UPDATE tmp_subscriber sub
+  JOIN tmp_ledger_new n ON n.subscriber_id = sub.subscriber_id
+  SET sub.ledger_no = n.new_ledger_no,
+      sub.ledger_reason = n.reason;
 
   -- Legacy row id -> subscriber_id, for every source row.
   CREATE TEMPORARY TABLE tmp_map (PRIMARY KEY (legacy_id)) AS
@@ -681,9 +741,14 @@ main: BEGIN
     s.shop_name, s.floor_no, s.building_name, s.landmark, s.street, s.area, s.province,
     s.address_change, s.distributor_area, s.contact_person_name,
     s.organiser_name, s.organiser_mobile, s.organiser_country,
-    s.ledger_no, u.user_id, s.created_at
+    -- The subscriber's number when it was replaced, or when this row's own is missing or
+    -- malformed; otherwise the row keeps the number it was entered with.
+    CASE WHEN sub.ledger_reason IS NOT NULL OR s.ledger_no IS NULL OR s.ledger_no NOT REGEXP '^PV[0-9]+$'
+         THEN sub.ledger_no ELSE s.ledger_no END,
+    u.user_id, s.created_at
   FROM tmp_src s
   JOIN tmp_map m ON m.legacy_id = s.id
+  JOIN tmp_subscriber sub ON sub.subscriber_id = m.subscriber_id
   LEFT JOIN tmp_users u ON u.name_hash = s.added_by_hash
   LEFT JOIN tmp_unit_country uc ON uc.unit_id = CAST(s.unit_id AS UNSIGNED)
   LEFT JOIN tmp_currency cur ON cur.country_code = uc.country_code
@@ -714,6 +779,29 @@ main: BEGIN
          (SELECT IFNULL(ROUND(SUM(amount), 2), 0) FROM pv_subscription_details),
          (SELECT IFNULL(ROUND(SUM(CAST(NULLIF(TRIM(Amount), '') AS DECIMAL(14, 2))), 2), 0) FROM vayana_master_single)
            = (SELECT IFNULL(ROUND(SUM(amount), 2), 0) FROM pv_subscription_details);
+
+  -- Ledger numbers: every subscriber has one, none is shared, PV100000 is never used.
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'ledger: subscribers without a valid number', '0', COUNT(*), COUNT(*) = 0
+    FROM pv_subscription_master
+   WHERE ledger_no IS NULL OR ledger_no NOT REGEXP '^PV[0-9]+$' OR ledger_no = 'PV100000';
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'ledger: numbers shared by several subscribers', '0', COUNT(*), COUNT(*) = 0
+    FROM (SELECT ledger_no FROM pv_subscription_master GROUP BY ledger_no HAVING COUNT(*) > 1) shared;
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'ledger: subscriptions without a valid number', '0', COUNT(*), COUNT(*) = 0
+    FROM pv_subscription_details
+   WHERE ledger_no IS NULL OR ledger_no NOT REGEXP '^PV[0-9]+$' OR ledger_no = 'PV100000';
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'ledger: kept from the legacy data (info)', '-', COUNT(*), 1
+    FROM tmp_subscriber WHERE ledger_reason IS NULL;
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT CONCAT('ledger: new number, ', reason, ' (info)'), '-', COUNT(*), 1
+    FROM tmp_ledger_new GROUP BY reason;
+  INSERT INTO tmp_checks (check_name, expected, actual, passed)
+  SELECT 'ledger: new numbers given (info)', '-',
+         CONCAT('PV', v_ledger_start, ' to PV', v_ledger_start - 1 + COUNT(*)), 1
+    FROM tmp_ledger_new;
 
   -- Informational, not pass/fail: the spec expects about 29,300.
   INSERT INTO tmp_checks (check_name, expected, actual, passed)
@@ -796,15 +884,15 @@ main: BEGIN
     SELECT 'ALL CHECKS PASSED - COMMITTED' AS result;
   ELSE
     ROLLBACK;
-    SELECT 'ALL CHECKS PASSED - DRY RUN, ROLLED BACK. Run CALL pv_migrate(1) to keep the data.' AS result;
+    SELECT 'ALL CHECKS PASSED - DRY RUN, ROLLED BACK. Run npm run db:migrate:pv-subscriptions:commit to keep the data.' AS result;
   END IF;
 END $$
 
 DELIMITER ;
 
--- Run Step 0, then the migration. 0 = dry run; change to 1 to commit.
+-- Run Step 0, then the migration: a dry run unless @pv_commit = 1 (set by the :commit command).
 CALL pv_create_tables();
-CALL pv_migrate(1);
+CALL pv_migrate(IFNULL(@pv_commit, 0));
 
 -- Remove the helper procedures.
 DROP PROCEDURE IF EXISTS pv_create_tables;

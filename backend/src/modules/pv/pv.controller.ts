@@ -1451,10 +1451,10 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
 
     // Each place's print and digital target from Set Target. A draft is not given yet, except
     // International's own (it sets its own).
-    const targets = await targetRows(prisma, "setToOrg", [rootId, ...byChild.keys()]);
+    const targets = await targetRows(prisma, "setToOrg", [rootId, ...byChild.keys()], year);
     const given = (id: number) => {
       const row = targets.get(id);
-      return row && (row.status === "Active" || row.setByOrg === id) ? row : null;
+      return row && (row.status !== "Draft" || row.setByOrg === id) ? row : null;
     };
 
     const rowsBelow = [...byChild]

@@ -176,9 +176,9 @@ export async function updateSubscription(
   return unwrap(data);
 }
 
-/** Without orgId, the leader's own place. */
-export async function fetchPvTargets(orgId?: number): Promise<PvTargets> {
-  const { data } = await api.get<ApiEnvelope<PvTargets>>("/pv/targets", { params: { org_id: orgId } });
+/** Without orgId, the leader's own place; without year, the latest campaign year with targets. */
+export async function fetchPvTargets(orgId?: number, year?: number): Promise<PvTargets> {
+  const { data } = await api.get<ApiEnvelope<PvTargets>>("/pv/targets", { params: { org_id: orgId, year } });
   return unwrap(data);
 }
 

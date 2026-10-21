@@ -161,9 +161,9 @@ export const analysisSummary = async (req: Request, res: Response) => {
 
     // The place's print + digital target from Set Target, as on Analytics: a draft is not given
     // yet, except International's own (it sets its own). 0 when none.
-    const targetRow = (await targetRows(prisma, "setToOrg", [place.id])).get(place.id);
+    const targetRow = (await targetRows(prisma, "setToOrg", [place.id], year)).get(place.id);
     const target =
-      targetRow && (targetRow.status === "Active" || targetRow.setByOrg === place.id) ? targetRow.print + targetRow.digital : 0;
+      targetRow && (targetRow.status !== "Draft" || targetRow.setByOrg === place.id) ? targetRow.print + targetRow.digital : 0;
 
     // renewable: last year's subscriptions, which this year's renewals are counted against.
     // icf_members: subscriptions whose subscriber is an ICF member (is_icf_member = 'Yes').
@@ -378,7 +378,7 @@ export const analysisPlaces = async (req: Request, res: Response) => {
 
     const [summaries, targets] = await Promise.all([
       resolveOrganisationSummaries(ids),
-      targetRows(prisma, "setToOrg", children.map((child) => child.id)),
+      targetRows(prisma, "setToOrg", children.map((child) => child.id), year),
     ]);
     for (const id of ids) {
       if (summaries.get(id)?.level === LEVEL.unit) add(id, (n) => (n.units += 1));
