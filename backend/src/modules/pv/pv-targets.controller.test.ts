@@ -85,7 +85,7 @@ function fakeQueryRaw(sql: string, ...values: any[]) {
       closed: TARGETS.some((row) => row.targetYear === year && row.campaign_status === "Closed") ? 1 : 0,
     }));
   }
-  if (sql.includes("FROM vayana_subscription_entity_new")) {
+  if (sql.includes("FROM pv_subscription_entity")) {
     // The place ids, then the year.
     const column = sql.includes("WHERE setToOrg IN") ? "setToOrg" : "setByOrg";
     const ids = values.slice(0, -1);

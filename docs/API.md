@@ -429,7 +429,7 @@ subscriber number). Time ranges use the database server's clock on `created_at`.
 
 ### `GET /api/pv/targets?org_id=`
 
-Targets from `vayana_subscription_entity_new`: each place gets a print and a digital target from
+Targets from `pv_subscription_entity`: each place gets a print and a digital target from
 the place directly above it (International sets its own). Without `org_id`, the leader's own place;
 a place below it is view-only; outside the leader's branch is a 403. Only rows with
 `campaign_status` `Active` or `Draft` count, the latest (highest `id`) per place. A `Draft` is not

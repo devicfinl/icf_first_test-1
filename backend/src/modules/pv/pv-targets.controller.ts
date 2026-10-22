@@ -16,7 +16,7 @@ import {
 } from "./pv.controller.js";
 
 /*
- * Pravasi Vayana targets (vayana_subscription_entity_new): each place gets a print and a digital
+ * Pravasi Vayana targets (pv_subscription_entity): each place gets a print and a digital
  * target from the place directly above it, and shares it out among the places directly below.
  * International sets its own. A row's campaign_status is Active (saved), Draft (only its setter
  * and the levels above see it) or Closed (a finished campaign year: shown, counted, view-only).
@@ -26,7 +26,7 @@ import {
  * open; once it is closed, International starts the next year. Earlier years are view-only.
  */
 
-const TABLE = "vayana_subscription_entity_new";
+const TABLE = "pv_subscription_entity";
 const ACTIVE = "Active";
 const DRAFT = "Draft";
 const CLOSED = "Closed";

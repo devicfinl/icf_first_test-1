@@ -75,7 +75,7 @@ const MEMBERS: Record<number, number> = { 80: 10, 81: 6, 82: 4 };
 
 // Answers the controller's raw queries from SUBS. The values are the IN-list ids, then the year,
 // then (for a page) LIMIT and OFFSET, in the order the placeholders appear.
-// Set Target rows (vayana_subscription_entity_new): Muscat gave Bousher 4 print and 6 digital;
+// Set Target rows (pv_subscription_entity): Muscat gave Bousher 4 print and 6 digital;
 // Bousher gave Unit A 3 and 2, and has a draft for Unit B (not given yet, so not counted).
 const TARGET_ROWS = [
   { id: 1, setByOrg: 60, setToOrg: 70, targetPrint: 4, targetDigital: 6, campaign_status: "Active" },
@@ -84,7 +84,7 @@ const TARGET_ROWS = [
 ];
 
 function fakeQueryRaw(sql: string, ...values: any[]) {
-  if (sql.includes("FROM vayana_subscription_entity_new")) {
+  if (sql.includes("FROM pv_subscription_entity")) {
     return TARGET_ROWS.filter((row) => values.includes(row.setToOrg));
   }
   // One subscriber's subscriptions, rejected included (view and edit): (subscriber_id).

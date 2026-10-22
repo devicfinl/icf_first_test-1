@@ -223,7 +223,7 @@ model VayanaSubscriptionEntityNew {
   updatedAt      DateTime @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
 
   @@index([targetYear, setToOrg], map: "idx_target_year_place")
-  @@map("vayana_subscription_entity_new")
+  @@map("pv_subscription_entity")
 }
 
 // Legacy Pravasi Vayana targets table (single target column).

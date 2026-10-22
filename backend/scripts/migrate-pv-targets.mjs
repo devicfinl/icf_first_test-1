@@ -124,7 +124,7 @@ try {
 
   await run(`2/3 Run ${file}`, "mysql", ["--table", database], { input: migration });
 
-  await run("3/3 First rows of the targets table", "mysql", ["--table", database, "-e", "SELECT * FROM vayana_subscription_entity_new LIMIT 10;"]);
+  await run("3/3 First rows of the targets table", "mysql", ["--table", database, "-e", "SELECT * FROM pv_subscription_entity LIMIT 10;"]);
 
   console.log("\n✔ Done. Check the numbers printed by the migration above.");
 } finally {
