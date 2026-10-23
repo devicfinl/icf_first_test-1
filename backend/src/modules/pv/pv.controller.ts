@@ -605,8 +605,19 @@ async function openPriceForUnit(unitId: number): Promise<OpenPrice> {
   };
 }
 
-const priceResponse = (price: OpenPrice) => ({
+// The country's phone code, to start the form's mobile code with; null when it is not known.
+async function phoneCodeFor(countryCode: string): Promise<string | null> {
+  try {
+    const country = await prisma.country.findFirst({ where: { code: countryCode }, select: { phoneCode: true } });
+    return country?.phoneCode ? String(country.phoneCode) : null;
+  } catch {
+    return null;
+  }
+}
+
+const priceResponse = async (price: OpenPrice) => ({
   country_code: price.countryCode,
+  phone_code: await phoneCodeFor(price.countryCode),
   year: price.year,
   currency: price.currency,
   campaign_status: price.campaignStatus,
@@ -949,7 +960,7 @@ export const registrationPrice = async (req: Request, res: Response) => {
     await requireUnitInScope(leader, unitId);
     const price = await openPriceForUnit(unitId);
 
-    return sendSuccess(res, "Price fetched successfully", priceResponse(price));
+    return sendSuccess(res, "Price fetched successfully", await priceResponse(price));
   } catch (error) {
     return handleError(res, error, "PV price error:");
   }
@@ -1440,10 +1451,10 @@ export const registrationAnalytics = async (req: Request, res: Response) => {
 
     // Each place's print and digital target from Set Target. A draft is not given yet, except
     // International's own (it sets its own).
-    const targets = await targetRows(prisma, "setToOrg", [rootId, ...byChild.keys()]);
+    const targets = await targetRows(prisma, "setToOrg", [rootId, ...byChild.keys()], year);
     const given = (id: number) => {
       const row = targets.get(id);
-      return row && (row.status === "Active" || row.setByOrg === id) ? row : null;
+      return row && (row.status !== "Draft" || row.setByOrg === id) ? row : null;
     };
 
     const rowsBelow = [...byChild]
@@ -1955,7 +1966,7 @@ export const publicPrice = async (req: Request, res: Response) => {
     await requireLinkRoot(rootId);
     await requireUnitUnderRoot(rootId, unitId);
 
-    return sendSuccess(res, "Price fetched successfully", priceResponse(await openPriceForUnit(unitId)));
+    return sendSuccess(res, "Price fetched successfully", await priceResponse(await openPriceForUnit(unitId)));
   } catch (error) {
     return handleError(res, error, "PV public price error:");
   }

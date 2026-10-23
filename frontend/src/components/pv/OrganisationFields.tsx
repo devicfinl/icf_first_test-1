@@ -39,7 +39,8 @@ function OrganisationFields({ path, levels, onChoose, error }: Props) {
         return (
           <Field key={`${level.parentId}-${index}`}>
             <FieldLabel htmlFor={id}>
-              {level.loading ? <Loader variant="inline" label={label} className="text-foreground" /> : label}
+              {label}
+              {level.loading && <Loader variant="inline" label={`Loading ${label}…`} className="ml-2" />}
               <span className="text-destructive">*</span>
             </FieldLabel>
             <NativeSelect

@@ -185,6 +185,13 @@ function PrivacyPolicyPage() {
           a child without appropriate parental consent, please contact us using the details in Section 11 and
           we will take steps to address it promptly.
         </p>
+        <p>
+          To report a child safety concern, see our{" "}
+          <Link to="/child-safety" className="text-blue-700 underline-offset-2 hover:underline">
+            Child Safety Standards
+          </Link>
+          .
+        </p>
       </LegalSection>
 
       <LegalSection title="8. Your Rights and Choices">

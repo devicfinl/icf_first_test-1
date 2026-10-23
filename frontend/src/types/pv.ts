@@ -15,10 +15,14 @@ export type RegistrationContext = {
 
 export const SUBSCRIPTION_MODES = ["Print", "Digital", "Print&Digital"] as const;
 export type SubscriptionMode = (typeof SUBSCRIPTION_MODES)[number];
+/** The modes a new subscription can choose; Print&Digital is kept above only for old records. */
+export const SELECTABLE_SUBSCRIPTION_MODES = ["Print", "Digital"] as const satisfies readonly SubscriptionMode[];
 
 /** GET /pv/registration/price: the open campaign for the unit's country. */
 export type RegistrationPrice = {
   country_code: string;
+  /** The country's phone code, e.g. "968"; null when it is not known. */
+  phone_code: string | null;
   year: number;
   currency: string;
   campaign_status: string | null;
@@ -325,9 +329,17 @@ export type PvTargets = {
   path: OrgPlace[];
   /** The leader's own place: drill-down never goes above it. */
   top_id: number;
-  /** The open campaign year achieved is counted for; null at International (one per country). */
-  year: number | null;
-  own: (TargetPair & { status: "Active" | "Draft" }) | null;
+  /** The campaign year shown: its targets, and achieved counted for it. */
+  year: number;
+  /** The campaign years that have targets, newest first. */
+  years: number[];
+  /** The year shown is a finished campaign: its targets are shown but cannot be changed. */
+  closed: boolean;
+  /** The year after the latest with targets. */
+  next_year: number;
+  /** International only, before anything is set for next_year: it starts the next campaign. */
+  can_start_next: boolean;
+  own: (TargetPair & { status: "Active" | "Draft" | "Closed" }) | null;
   allocated: TargetPair;
   /** null until the place's own target is set. */
   remaining: TargetPair | null;
@@ -350,6 +362,8 @@ export type PvTargets = {
 
 /** PUT /pv/targets. */
 export type TargetsSave = {
+  /** The campaign year the targets are for. */
+  year: number;
   status: "Active" | "Draft";
   own?: { print: number; digital: number };
   children: { org_id: number; print: number; digital: number }[];

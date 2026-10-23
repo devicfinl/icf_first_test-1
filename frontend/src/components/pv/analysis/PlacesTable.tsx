@@ -158,7 +158,7 @@ function PlacesTable({ tab, filters, onOpen }: Props) {
           <AlertDescription>{shown.error}</AlertDescription>
         </Alert>
       )}
-      {!shown && <Loader label="Loading…" className="min-h-[240px]" />}
+      {!shown && <Loader variant="rows" className="py-4" />}
       {data && rows.length === 0 && (
         <p className="rounded-xl bg-[#faf7f3] px-4 py-8 text-center text-[14px] text-[#6b6b6b]">There are no places below this one.</p>
       )}

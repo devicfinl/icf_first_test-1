@@ -205,52 +205,25 @@ model PvSubscriptionMaster {
   @@map("pv_subscription_master")
 }
 
-enum CampaignStatus {
-  Draft
-  Active
-  Closed
-}
-
-// Pravasi Vayana campaign catalogue.
-model VayanaCampaign {
-  campaignId Int            @id @default(autoincrement()) @map("campaignId")
-  name       String         @unique(map: "uq_vayana_campaign_name") @db.VarChar(100)
-  startDate  DateTime?      @map("startDate") @db.Date
-  endDate    DateTime?      @map("endDate") @db.Date
-  status     CampaignStatus @default(Draft)
-  createdBy  Int?           @map("createdBy")
-  createdAt  DateTime       @default(now()) @map("createdAt") @db.Timestamp(0)
-  updatedAt  DateTime       @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
-
-  targets    VayanaSubscriptionEntityNew[]
-
-  @@map("vayana_campaign")
-}
-
-// Pravasi Vayana target distribution per place and campaign.
+// Pravasi Vayana target distribution per place and campaign year.
 model VayanaSubscriptionEntityNew {
-  id              Int            @id @default(autoincrement())
-  campaignId      Int            @map("campaignId")
-  setByOrg        Int            @map("setByOrg")
-  setByLevel      String         @map("setByLevel") @db.VarChar(100)
-  setByName       String         @map("setByName") @db.VarChar(100)
-  setToOrg        Int            @map("setToOrg")
-  setToLevel      String         @map("setToLevel") @db.VarChar(100)
-  setToName       String         @map("setToName") @db.VarChar(100)
-  targetPrint     Int            @default(0) @map("targetPrint")
-  targetDigital   Int            @default(0) @map("targetDigital")
-  campaignStatus  String         @default("Active") @map("campaign_status") @db.VarChar(30)
-  createdAtLegacy DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
-  createdBy       Int?           @map("createdBy")
-  updatedBy       Int?           @map("updatedBy")
-  createdAt       DateTime       @default(now()) @map("createdAt") @db.Timestamp(0)
-  updatedAt       DateTime       @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
+  id             Int      @id @default(autoincrement())
+  setByOrg       Int      @map("setByOrg")
+  setByLevel     String   @map("setByLevel") @db.VarChar(100)
+  setByName      String   @map("setByName") @db.VarChar(100)
+  setToOrg       Int      @map("setToOrg")
+  setToLevel     String   @map("setToLevel") @db.VarChar(100)
+  setToName      String   @map("setToName") @db.VarChar(100)
+  // The campaign year the target is for (existing targets: 2026). See sql/pv-targets.sql.
+  targetYear     Int      @map("targetYear")
+  targetPrint    Int      @default(0) @map("targetPrint")
+  targetDigital  Int      @default(0) @map("targetDigital")
+  campaignStatus String   @default("Active") @map("campaign_status") @db.VarChar(30)
+  createdAt      DateTime @default(now()) @map("createdAt") @db.Timestamp(0)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updatedAt") @db.Timestamp(0)
 
-  campaign        VayanaCampaign @relation(fields: [campaignId], references: [campaignId], onDelete: Restrict, onUpdate: Cascade, map: "fk_target_campaign")
-
-  @@unique([setToOrg, campaignId], map: "uq_target_place_campaign")
-  @@index([campaignId], map: "fk_target_campaign")
-  @@map("vayana_subscription_entity_new")
+  @@index([targetYear, setToOrg], map: "idx_target_year_place")
+  @@map("pv_subscription_entity")
 }
 
 // Legacy Pravasi Vayana targets table (single target column).
@@ -319,4 +292,3 @@ model HierarchyMapping {
 
   @@map("hierachy_mappings")
 }
-

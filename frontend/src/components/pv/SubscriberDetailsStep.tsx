@@ -75,7 +75,7 @@ function SubscriberDetailsStep({
             label="Code"
             required
             inputMode="tel"
-            placeholder="968"
+            placeholder=""
             error={errors.mobileCountry?.message}
             {...register("mobileCountry")}
           />
@@ -94,7 +94,7 @@ function SubscriberDetailsStep({
             id="whatsappCountry"
             label="Code"
             inputMode="tel"
-            placeholder="968"
+            placeholder=""
             error={errors.whatsappCountry?.message}
             {...register("whatsappCountry")}
           />

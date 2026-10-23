@@ -256,10 +256,11 @@ country (Saudi has a Chapter level, some countries have no Division).
 ### `GET /api/pv/registration/price?unit_id=`
 
 The open (not Closed) campaign in `vayana_subscription` for the unit's country. A price that is not
-set is `null`.
+set is `null`. `phone_code` is the country's phone code from `countries` (`null` when not known); the
+form starts the mobile and WhatsApp codes with it.
 
 ```json
-{ "country_code": "OM", "year": 2027, "currency": "OMR", "campaign_status": "Open",
+{ "country_code": "OM", "phone_code": "968", "year": 2027, "currency": "OMR", "campaign_status": "Open",
   "prices": { "Print": 5, "Digital": 3.5, "Print&Digital": 6 } }
 ```
 
@@ -428,7 +429,7 @@ subscriber number). Time ranges use the database server's clock on `created_at`.
 
 ### `GET /api/pv/targets?org_id=`
 
-Targets from `vayana_subscription_entity_new`: each place gets a print and a digital target from
+Targets from `pv_subscription_entity`: each place gets a print and a digital target from
 the place directly above it (International sets its own). Without `org_id`, the leader's own place;
 a place below it is view-only; outside the leader's branch is a 403. Only rows with
 `campaign_status` `Active` or `Draft` count, the latest (highest `id`) per place. A `Draft` is not

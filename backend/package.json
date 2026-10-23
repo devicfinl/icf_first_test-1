@@ -14,10 +14,12 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:studio": "prisma studio",
-    "db:migrate:pv-targets": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-create-new-table.sql vayana_subscription_entity",
-    "db:migrate:pv-campaigns": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets-add-campaign.sql vayana_subscription_entity_new",
-    "db:migrate:pv-targets:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-targets.mjs pv-targets-create-new-table.sql vayana_subscription_entity",
-    "db:migrate:pv-campaigns:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-targets.mjs pv-targets-add-campaign.sql vayana_subscription_entity_new"
+    "db:migrate:pv-targets": "tsx --env-file-if-exists=.env scripts/migrate-pv-targets.mjs pv-targets.sql vayana_subscription_entity",
+    "db:migrate:pv-targets:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-targets.mjs pv-targets.sql vayana_subscription_entity",
+    "db:migrate:pv-subscriptions": "tsx --env-file-if-exists=.env scripts/migrate-pv-subscriptions.mjs",
+    "db:migrate:pv-subscriptions:commit": "tsx --env-file-if-exists=.env scripts/migrate-pv-subscriptions.mjs --commit",
+    "db:migrate:pv-subscriptions:local": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-subscriptions.mjs",
+    "db:migrate:pv-subscriptions:local:commit": "tsx --env-file-if-exists=.env --env-file=.env.local scripts/migrate-pv-subscriptions.mjs --commit"
       },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.10.0",

@@ -144,6 +144,7 @@ export interface OrganisationLevel {
 export async function resolveOrganisationSummaries(unitIds: Iterable<number>): Promise<Map<number, OrganisationLevel>> {
   const ids = [...new Set(unitIds)];
   const units = await resolveUnitsById(ids);
+  
 
   const levelIds = [...new Set([...units.values()].map((unit) => unit.hlevel).filter((level): level is number => level !== null))];
   const levelNames = await resolveLevelNamesByLevel(levelIds);

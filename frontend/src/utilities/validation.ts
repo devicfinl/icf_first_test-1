@@ -38,6 +38,28 @@ export const cancelAccountSchema = z.object({
 });
 export type CancelAccountFormData = z.infer<typeof cancelAccountSchema>;
 
+// The public child safety report form. There is no backend for it yet (see ChildSafetyReportForm).
+export const CHILD_SAFETY_CONCERNS = [
+  "Child sexual abuse material (CSAM)",
+  "Grooming or sexual exploitation of a child",
+  "Sextortion or trafficking",
+  "Account used by or for a child",
+  "Other child safety concern",
+] as const;
+
+export const childSafetyReportSchema = z.object({
+  concern: z.enum(CHILD_SAFETY_CONCERNS, { error: "Please choose what you are reporting." }),
+  details: z
+    .string()
+    .trim()
+    .min(20, "Please describe what you saw in at least 20 characters.")
+    .max(4000, "Please keep the description under 4000 characters."),
+  where: z.string().trim().max(500, "Please keep this under 500 characters.").optional(),
+  name: z.string().trim().max(200, "Name is too long.").optional(),
+  email: z.union([z.literal(""), z.email("Please enter a valid email address.")]).optional(),
+});
+export type ChildSafetyReportFormData = z.infer<typeof childSafetyReportSchema>;
+
 // Add Subscriber (Pravasi Vayana). Mirrors registrationBody in backend/src/modules/pv/pv.controller.ts.
 // Every field is a string in the form; empty optional fields are dropped before sending.
 const pvRequired = (label: string) =>
@@ -83,7 +105,7 @@ export const addSubscriberSchema = z
     email: z.union([z.literal(""), z.email("Please enter a valid email address.").max(320)]),
     contactPersonName: pvOptional("the contact person / sponsor"),
     // Step 2
-    subscriptionMode: z.enum(["Print", "Digital", "Print&Digital"], {
+    subscriptionMode: z.enum(["Print", "Digital"], {
       error: "Please choose a subscription mode.",
     }),
     distributorArea: pvOptional("the distribution lead"),

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Loader from "../loading-ui/Loader";
 import TargetSummary from "./TargetSummary";
 import TargetsTable, { type TargetEdit } from "./TargetsTable";
+import YearSelect from "./YearSelect";
 import { apiErrorMessage } from "../../api/axios";
 import { fetchPvTargets, savePvTargets } from "../../api/pv";
 import { useUnsavedChangesWarning } from "../../hooks/useUnsavedChangesWarning";
@@ -31,30 +33,36 @@ type Props = {
   onOpen: (id: number) => void;
   /** Whether there are unsaved changes, so closing can ask first. */
   onDirtyChange: (dirty: boolean) => void;
+  /** The campaign year shown, so the places opened from here show the same year. */
+  onYearChange: (year: number) => void;
 };
 
 /**
- * Set Target: the leader's own print and digital target, shared out among the places directly
- * below. Each row opens that place's own allocation, view-only.
+ * Set Target: the leader's own print and digital target for a campaign year, shared out among the
+ * places directly below. Each row opens that place's own allocation, view-only. The year picker
+ * shows earlier years (view-only); International starts the next year's campaign.
  */
-function TargetsEditor({ onOpen, onDirtyChange }: Props) {
+function TargetsEditor({ onOpen, onDirtyChange, onYearChange }: Props) {
   const [data, setData] = useState<PvTargets | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<number, TargetEdit>>({});
   // International only: its own target.
   const [own, setOwn] = useState<TargetEdit>({ print: "", digital: "" });
   const [saving, setSaving] = useState(false);
+  // undefined: the latest campaign year with targets, as the server decides.
+  const [year, setYear] = useState<number | undefined>(undefined);
 
   const load = useCallback(() => {
-    fetchPvTargets()
+    fetchPvTargets(undefined, year)
       .then((loaded) => {
         setData(loaded);
         setEdits(editsFrom(loaded));
         setOwn({ print: asText(loaded.own?.print), digital: asText(loaded.own?.digital) });
         setError(null);
+        onYearChange(loaded.year);
       })
       .catch((failure) => setError(apiErrorMessage(failure, "Could not load the targets.")));
-  }, []);
+  }, [year, onYearChange]);
   useEffect(load, [load]);
 
   const editable = Boolean(data?.can_allocate || data?.can_edit_own);
@@ -107,6 +115,7 @@ function TargetsEditor({ onOpen, onDirtyChange }: Props) {
     setSaving(true);
     try {
       await savePvTargets({
+        year: data.year,
         status,
         own: ownChanged ? { print: toNumber(own.print), digital: toNumber(own.digital) } : undefined,
         children: changed.map((row) => ({
@@ -137,14 +146,29 @@ function TargetsEditor({ onOpen, onDirtyChange }: Props) {
     );
   }
 
+  // The years to pick from: those with targets, and the one shown (e.g. a new campaign).
+  const yearOptions = [...new Set([data.year, ...data.years])].sort((a, b) => b - a);
+  const keepYear = dirty ? "Save or reset your changes first" : undefined;
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-[20px] font-semibold text-navy">Set Target</h2>
-        <p className="text-[13px] text-[#6b6b6b]">
-          {data.place.name ?? "Pravasi Vayana"}
-          {data.year ? ` · Pravasi Vayana ${data.year}` : ""}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[20px] font-semibold text-navy">Set Target</h2>
+          <p className="text-[13px] text-[#6b6b6b]">
+            {data.place.name ?? "Pravasi Vayana"} · Pravasi Vayana {data.year}
+            {data.closed ? " · closed" : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2" title={keepYear}>
+          <YearSelect years={yearOptions} value={data.year} onChange={setYear} disabled={dirty} />
+          {data.can_start_next && data.year !== data.next_year && (
+            <Button variant="outline" onClick={() => setYear(data.next_year)} disabled={dirty}>
+              <CalendarPlus />
+              Set {data.next_year} targets
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
