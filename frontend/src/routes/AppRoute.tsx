@@ -11,6 +11,7 @@ import PrivacyPolicyPage from "../pages/PrivacyPolicyPage";
 import TermsPage from "../pages/TermsPage";
 import SupportPage from "../pages/SupportPage";
 import DeleteAccountPage from "../pages/DeleteAccountPage";
+import ChildSafetyPage from "../pages/ChildSafetyPage";
 import PvNewSubscribersPage from "../pages/PvNewSubscribersPage";
 import PvRenewPage from "../pages/PvRenewPage";
 import PvPublicPage from "../pages/PvPublicPage";
@@ -29,6 +30,7 @@ function AppRoute() {
       <Route path="/termsAndConditions" element={<TermsPage />} />
       <Route path="/support" element={<SupportPage />} />
       <Route path="/deleteAccount" element={<DeleteAccountPage />} />
+      <Route path="/child-safety" element={<ChildSafetyPage />} />
       {/* A leader's shared Pravasi Vayana registration link: anyone can subscribe through it. */}
       <Route path="/pv/register/:rootId" element={<PublicSubscriptionPage />} />
       {/* Earlier paths, kept so old links still work. */}

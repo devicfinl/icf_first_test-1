@@ -52,6 +52,14 @@ function TermsPage() {
             "Act in a way that goes against ICF International's decisions, rules or policies.",
           ]}
         />
+        <p>
+          Any form of child sexual abuse or exploitation is strictly forbidden and leads to permanent cancellation
+          of your account. See our{" "}
+          <Link to="/child-safety" className="text-blue-700 underline-offset-2 hover:underline">
+            Child Safety Standards
+          </Link>
+          .
+        </p>
       </LegalSection>
 
       <LegalSection title="6. Suspension and Cancellation">
