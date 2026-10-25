@@ -578,3 +578,213 @@ Set by the system: `subscription_year`, `registration_type` (NEW / RENEW), `regi
 - **C15 Filter thresholds.** What % is "High Performers" and what % is "Needs Attention"? (Suggested: 70% and above; below 50%.)
 - **C16 Country level.** Who can open the country page — only country-level leaders / admins? Is there a level above country (all countries together)?
 - **C17 New % on the unit page.** Taken as New ÷ Target (48 of 120 = 40% in the design). The sample numbers in the design do not all add up, so confirm each percentage rule in 2.9.
+---
+
+# Meeting Module — Task List
+
+Backend (REST API) + web frontend. Spec: "Meeting Module – Development Spec" (22 Oct 2026), Figma file *pv_icf First page*, meeting row at y ≈ 3650. The legacy E-minutes tables already hold years of meetings, attendance and decisions, so the module **reads and writes those tables** and adds only what is missing (scheduling before the meeting).
+
+---
+
+## 1. Workflow
+
+```
+Schedule meeting ──► Meeting list ──► (meeting day) Mark attendance ──► Add E-minute (2 steps) ──► Publish
+   (Draft/Scheduled)    Upcoming/…       QR scan or member list              decisions = action items
+                                          late / early rules                         │
+                                                                                     ▼
+                         Committee report ◄── links an E-minute          E-minutes Actions (follow-up)
+                                │                                         Pending → In progress → Completed
+                                ▼
+                 Analytics: Attendance report · Meeting overview (by region / unit)
+```
+
+1. **Schedule.** A leader schedules a meeting for their committee: title, committee type, place or virtual link, agenda, date, start / end, late and early thresholds, reminder, invitees. Save Draft or Schedule.
+2. **Before the meeting.** It shows in the meeting list (Today / Tomorrow / This Week). The reminder fires `reminder` minutes before the start.
+3. **During the meeting.** Attendance is marked by QR scan, Membership ID or from the member list. Status comes from the check-in time and the thresholds (Present / Late Join / Early Leave); an admin can override it.
+4. **After the meeting.** The E-minute is written in two steps: details and proceedings, then reports, decisions and sign-off. Publish locks it (rule 2.6).
+5. **Follow-up.** Actionable decisions appear in E-minutes Actions with assignee and target date until Completed.
+6. **Reporting.** A committee report can link an E-minute (and so its attendance). Analytics read across all meetings.
+
+A meeting entered the old way (no schedule) is still valid: the E-minute itself is the meeting record, as in the legacy data.
+
+---
+
+## 2. Existing tables (staging, Oct 2026)
+
+| Table | Rows | Role in the module | Notes from the data |
+|-------|------|--------------------|---------------------|
+| `eminutes_master` | 5,734 | **E-minute / meeting record** | `emid` PK. `minutes_id` = adder org id + `emid` (e.g. `24494` + `6040` → `244946040`). `ctype` is a string id of `eminutes_committee_types` (303 rows blank). `meeting_type` `physical` / `virtual`. `pdate`, `from_time`, `to_time` are a date and `HH:MM` text. `attendees` = comma list of member ids. `published` 0 / 1 (4,319 published). `council_start_from` / `council_end_to` = council year. `added_by` is mostly an org id, not a user id (only 1,508 match `users.id`). |
+| `eminutes_agenda` | 12,558 | Agenda items | `minutes_id` → `eminutes_master.emid`; `cell` = department (`organaisation_cells`); `priority` int. |
+| `eminutes_attendance` | 75,097 | Attendance per member | `minutes_id`, `member_id`, `member_no` (e.g. `AE2421991`), `is_present` 0 / 1, `joining_time` / `leaving_time` as `HH:MM` text, `is_leave_approved`, `leave_reason`. |
+| `eminutes_attendance_others` | 1,065 | Guests (non-members) | name + joining / leaving time. |
+| `eminutes_decisions` | 21,231 | Decisions = action items | `cell_id` = department, `is_actionable`, `assigned_to` = comma list of member ids, `target_date`, `status`: Info 18,918 · Processing 1,105 · Completed 661 · Pending 245 · Cancelled 8. |
+| `eminutes_attachments` | 191 | Uploaded files | `file_name` only (e.g. `eminutes_1788278497_0.docx`); confirm the storage location. |
+| `eminutes_committee_types` | 5 | Lookup | 0 Cabinet · 1 Council · 2 Senate · 3 Directorate · 4 Others. |
+| `committee_reports` | 63 | Committee report | `creport_id` = org id + `emid`; `eminutes_id` (nullable) → E-minute; `report_type` (`cabinet_meeting`, `other`, …); `org_id`; `published`. |
+| `committee_report_details` | 118 | Report sections | `cmt_report_id`, `department_id`, `title`, `department_report`. |
+| `eminutes_masterNew` | 2,974 | **Not used** | Copy: 3,004 of its `emid`s are also in `eminutes_master`. |
+| `eminutes_master_new` | 0 | **Not used** | Empty. |
+| `eminutes_attendance_9aug` | 936 | **Not used** | Old backup. |
+| `vie_eminutes_attendance` | view | Read-only helper | Attendance joined with meeting times, with `late_joining` / `is_late`. |
+
+Lookups also needed: `organaisation_cells` (departments), `designation_departments`, `membership_master` (members, QR / Membership ID), the org hierarchy (country → region → division → unit) used by PV.
+
+### 2.1 What is missing (new)
+
+| New | Why |
+|-----|-----|
+| `meetings` table (or new columns on `eminutes_master`) | Scheduling happens **before** minutes exist: status (Draft / Scheduled / Ongoing / Completed / Cancelled), `meeting_url`, `start_time` / `end_time`, `late_join_minutes`, `early_leave_minutes`, `reminder_minutes`, `notify_attendees`, `auto_checkin_qr`, `org_id`, created / updated by and at. Linked 1 : 1 to `eminutes_master.emid` once minutes are written (see C1). |
+| Attendance status + method | `eminutes_attendance` has only `is_present`. Add `status` (Present / Absent / LateJoin / EarlyLeave / Excused), `check_in_at`, `method` (QR / Manual / Admin), unique (`minutes_id`, `member_id`). |
+| Minutes status | `published` 0 / 1 maps to Draft / Published; keep it. Add `updated_by` for the audit trail. |
+| Decision status mapping | Legacy values Info / Processing / Pending / Completed / Cancelled vs. spec Pending / In Progress / Completed / Overdue (see C4). |
+
+---
+
+## 3. Rules
+
+### 3.1 Who can do what
+
+- Schedule, mark attendance, write minutes and reports: a leader holding a committee position (same position check as PV: `requireLeader`), for their own org only.
+- View lists, actions and analytics: the leader's own org and the places below it, as in PV analytics.
+- Edit a published E-minute or report: its author or an approver only, with an audit trail.
+
+### 3.2 Attendance classification
+
+Meeting 10:00–12:30, both thresholds 15 min:
+
+| Check-in / check-out | Status |
+|----------------------|--------|
+| Check-in before 10:15 | Present (On Time) |
+| Check-in at or after 10:15 | Late Join |
+| Leaves before 12:15 | Early Leave |
+| No check-in when the meeting ends | Absent |
+| Marked by admin with a reason | Excused |
+
+- Auto check-in via QR **off** → a scan only marks Present.
+- One check-in per member per meeting; a second scan answers "already checked in at 9:32".
+- Manual entry looks up the Membership ID; an unknown ID shows an inline error.
+- Summary ring = marked ÷ invited (18 / 24).
+
+### 3.3 Meeting
+
+- Duration = End − Start, shown live; End must be after Start.
+- Thresholds ≥ 0, and their sum less than the duration.
+- Status: Scheduled → Ongoing at start → Completed at end. Cancelled is manual, only before Completed.
+- Reminder fires `reminder_minutes` before start (toast, browser notification, email). Notify attendees → calendar invite (ICS) on scheduling.
+
+### 3.4 Minutes, actions, reports
+
+- An action item is Overdue when the target date has passed and it is not Completed.
+- Forms accept Malayalam text (report titles and sections).
+- Report attendance overview is read from the linked E-minute's attendance.
+
+---
+
+## 4. Backend tasks (`backend/src/modules/meeting/`)
+
+### 4.1 Models and lookups
+
+- [ ] MT-BE-01 Prisma models (read / write) for `eminutes_master`, `eminutes_agenda`, `eminutes_attendance`, `eminutes_attendance_others`, `eminutes_decisions`, `eminutes_attachments`, `committee_reports`, `committee_report_details`; read-only for `eminutes_committee_types`, `organaisation_cells`. Do not model the backup tables.
+- [ ] MT-BE-02 SQL script `sql/meetings.sql` for the new pieces in 2.1 (re-runnable, like `pv-targets.sql`, never changes legacy rows except adding columns), plus an npm command.
+- [ ] MT-BE-03 Lookups: `GET /lookups/committee-types`, `/departments`, `/report-types`, `/countries`, `/council-years`.
+- [ ] MT-BE-04 Shared helpers: parse legacy `HH:MM` / `HH:MM:SS` times, split / join the comma id lists (`attendees`, `assigned_to`), build `minutes_id` / `creport_id` (org id + `emid`).
+
+### 4.2 Meetings
+
+- [ ] MT-BE-05 `GET /meetings?status=&q=&from=&to=&page=` — scheduled meetings plus legacy E-minutes in the leader's org, with counts per status for the chips.
+- [ ] MT-BE-06 `POST /meetings` — Draft (Save Draft) or Scheduled; agenda items and invitees in one transaction; rules 3.3.
+- [ ] MT-BE-07 `GET / PATCH /meetings/:id` — detail and edit; cancel = PATCH status Cancelled (only before Completed).
+- [ ] MT-BE-08 Status by time (Scheduled → Ongoing → Completed), computed on read or by a scheduled job.
+
+### 4.3 Attendance
+
+- [ ] MT-BE-09 `GET /meetings/:id/attendance?status=&q=` — invited members with status, check-in time, and summary `{marked, total, present, absent}`.
+- [ ] MT-BE-10 `POST /meetings/:id/check-in` — body `{qrToken}` or `{membershipNo}`; applies rules 3.2; "already checked in" answer.
+- [ ] MT-BE-11 `PUT /meetings/:id/attendance/:memberId` — admin sets status (with reason for Excused).
+- [ ] MT-BE-12 Keep `is_present`, `joining_time`, `leaving_time` filled as well, so the old system still reads the rows.
+
+### 4.4 E-minutes and actions
+
+- [ ] MT-BE-13 `POST /meetings/:id/minutes` (step 1 saves a draft) and `GET / PATCH /minutes/:id` (step 2, publish). Also create minutes without a scheduled meeting (legacy way).
+- [ ] MT-BE-14 Decisions saved with the minutes (`eminutes_decisions`), repeatable.
+- [ ] MT-BE-15 `POST /minutes/:id/attachments` — multipart upload; confirm storage (C6).
+- [ ] MT-BE-16 `GET /actions?status=&year=` — actionable decisions across minutes, Overdue computed; `GET / PATCH /actions/:id` — status and assignee.
+- [ ] MT-BE-17 Published minutes: edit only by author / approver; audit trail.
+
+### 4.5 Committee reports
+
+- [ ] MT-BE-18 `GET / POST /reports`, `GET / PATCH /reports/:id` — header in `committee_reports`, sections in `committee_report_details`, optional link to an E-minute; publish.
+- [ ] MT-BE-19 Report detail includes the linked E-minute's attendance overview.
+- [ ] MT-BE-20 `GET /reports/:id/pdf` — PDF download (Malayalam font).
+
+### 4.6 Analytics
+
+- [ ] MT-BE-21 `GET /reports/attendance?committeeType=&from=&to=` — per member: attended / total, %, present, absent, late join; paginated.
+- [ ] MT-BE-22 `GET /reports/attendance/export?format=csv|xlsx|pdf`.
+- [ ] MT-BE-23 `GET /meetings/overview?unitId=&period=month|6m|year` — totals by committee type, and per place below (drill-down like PV analytics).
+
+### 4.7 Notifications
+
+- [ ] MT-BE-24 Reminder job (`reminder_minutes` before start); ICS invite when Notify attendees is on.
+
+### 4.8 Quality
+
+- [ ] MT-BE-25 Tests for each endpoint (position scope, validation, attendance rules 3.2, publish lock), in the style of `pv.controller.test.ts`.
+- [ ] MT-BE-26 Document every endpoint in `docs/API.md`.
+
+---
+
+## 5. Web frontend tasks
+
+### 5.1 Shell and shared components
+
+- [ ] MT-FE-01 Routes per the spec table (`/meetings`, `/meetings/new`, `/meetings/:id/attendance`, `/meetings/:id/minutes/new`, `/minutes/actions`, `/reports/...`, `/meetings/overview`); filters and tabs in query parameters.
+- [ ] MT-FE-02 Enable the existing **Meetings** sidebar submenu (`MeetingsSubmenu.tsx`): Meetings, E-minutes, Actions, Reports, Analytics (decide on "Old E-Minutes" and "Payouts", C7).
+- [ ] MT-FE-03 Shared components: StatusBadge, FilterChips, SegmentedTabs, ProgressRing, MeetingCard, MemberRow, SectionCard, Sheet (bottom sheet / modal), DatePicker, StackedBar, FileUpload, DataTable. Reuse the existing UI kit and the navy / clay / cream tokens; Manrope only if the app font changes (C8).
+
+### 5.2 Screens
+
+- [ ] MT-FE-04 Meeting list: search, status chips with counts, groups Today / Tomorrow / This Week, "+" / Schedule Meeting; skeleton, empty and no-results states.
+- [ ] MT-FE-05 Schedule Meeting: four cards, repeatable agenda, live duration, threshold preview bar, Save Draft / Schedule; unsaved-changes warning.
+- [ ] MT-FE-06 Mark Attendance: summary ring; Member List tab (search, chips, status sheet); QR Scanner tab (browser camera, permission / denied / invalid / already-checked-in states, manual Membership ID with autofocus + Enter for USB scanners); side by side on desktop.
+- [ ] MT-FE-07 Add E-Minute: step 1 (details, proceedings, attachment, Mark Attendance link), step 2 (reports & accounts, decisions, sign-off), Previous / Publish.
+- [ ] MT-FE-08 E-minutes Actions list (filters, cards / table) and action detail.
+- [ ] MT-FE-09 Committee report: form, detail (one layout, C9), edit, PDF download.
+- [ ] MT-FE-10 Attendance report: filters, member cards / sortable table, export menu, pagination.
+- [ ] MT-FE-11 Meeting overview: breadcrumb, period chips, totals by committee, unit cards with stacked bars, drill-down.
+- [ ] MT-FE-12 Meeting starting notification: in-app toast + browser notification with Join Now.
+
+### 5.3 Quality
+
+- [ ] MT-FE-13 Responsive per the spec breakpoints (< 768 / 768–1199 / ≥ 1200), WCAG 2.1 AA, Malayalam input.
+- [ ] MT-FE-14 End-to-end tests: schedule → check in → minutes → publish → action → report.
+
+---
+
+## 6. Order of work
+
+1. MT-BE-01 → MT-BE-04 (models, new columns / table, lookups)
+2. MT-BE-05 → MT-BE-08 and MT-FE-01 → MT-FE-05 (meetings: list + schedule)
+3. MT-BE-09 → MT-BE-12 and MT-FE-06 (attendance, QR)
+4. MT-BE-13 → MT-BE-17 and MT-FE-07 → MT-FE-08 (E-minutes + actions)
+5. MT-BE-18 → MT-BE-20 and MT-FE-09 (committee reports)
+6. MT-BE-21 → MT-BE-23 and MT-FE-10 → MT-FE-11 (analytics)
+7. MT-BE-24 and MT-FE-12 (notifications)
+8. MT-BE-25 → MT-BE-26, MT-FE-13 → MT-FE-14 (tests + polish)
+
+---
+
+## 7. Points to confirm
+
+- **C1 Meeting vs E-minute.** New `meetings` table linked to `eminutes_master`, or new scheduling columns directly on `eminutes_master` (one row from scheduling to published minutes)? The second keeps one record per meeting, like the legacy data.
+- **C2 Is the old system still writing?** If the legacy app still adds E-minutes to these tables, new columns must be nullable and both apps must agree on the values.
+- **C3 Member ids.** `attendees`, `member_id` and `assigned_to` hold member ids — confirm they are `membership_master.mid`, and what the QR code contains (membership no., e.g. `AE2421991`, or a token).
+- **C4 Decision status.** Map legacy Info / Processing / Pending / Completed / Cancelled to the spec's Pending / In Progress / Completed / Overdue? Is "Info" a non-actionable decision (hide it from Actions)?
+- **C5 `added_by`.** In `eminutes_master` it is mostly an org id, not a user id. New rows: keep the org id there (and store the user separately), or switch to the user id?
+- **C6 Attachments.** Where are the legacy files stored (server folder / S3)? New uploads go to the same place?
+- **C7 Sidebar.** Keep "Old E-Minutes" (legacy list) and "Payouts" (what is it?) in the Meetings menu?
+- **C8 Font.** The designs use Manrope; the app uses its current font. Switch for this module, or keep one font app-wide?
+- **C9 Report detail.** Two detail layouts are drawn (Committee Report detail and view-report); pick one.
+- **C10 Who schedules.** Any leader for their own committee only, or can a higher level schedule for a place below?
+- **C11 Excused.** Legacy has `is_leave_approved` + `leave_reason`; treat an approved leave as Excused?
