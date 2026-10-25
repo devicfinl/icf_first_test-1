@@ -14,6 +14,7 @@ import { hashPassword, verifyPassword } from "../../utils/password.js";
 import { resolveOrganisationSummaries } from "../../utils/reference-data.js";
 import { resolveUserRoles } from "../../utils/rbac.js";
 import { revokeToken } from "../../utils/token-denylist.js";
+import { cachedForUser, invalidateUser } from "../../utils/user-cache.js";
 import { sendError } from "../../utils/response.js";
 import { validate } from "../../utils/validate.js";
 
@@ -95,6 +96,36 @@ async function cabinetPositions(memberNo: string): Promise<MemberPosition[]> {
   });
 }
 
+function assertActive<T extends { active: number }>(user: T | null): T {
+  if (!user) {
+    throw new AppError("Member not found", 404);
+  }
+
+  if (user.active !== 1) {
+    throw new AppError("Your login is disabled", 401);
+  }
+
+  return user;
+}
+
+// The account and its cabinet positions for the session screens (/me, /positions), cached for a
+// short time (utils/user-cache.ts). No password: anything that needs it, or issues a token, reads
+// fresh with requireActiveUser.
+async function cachedSession(userId: string) {
+  const session = await cachedForUser(userId, "session", async () => {
+    const id = Number(userId);
+    const user = Number.isInteger(id)
+      ? await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, userName: true, memberNo: true, name: true, active: true, role: true, isOfficeUser: true },
+      })
+      : null;
+    const positions = user?.active === 1 ? await cabinetPositions(user.memberNo) : [];
+    return { user, positions };
+  });
+  return { user: assertActive(session.user), positions: session.positions };
+}
+
 // Re-read on every use: a member can be disabled while holding a still-valid token.
 async function requireActiveUser(userId: string) {
   const id = Number(userId);
@@ -113,15 +144,7 @@ async function requireActiveUser(userId: string) {
     })
     : null;
 
-  if (!user) {
-    throw new AppError("Member not found", 404);
-  }
-
-  if (user.active !== 1) {
-    throw new AppError("Your login is disabled", 401);
-  }
-
-  return user;
+  return assertActive(user);
 }
 
 export const memberLogin = async (req: Request, res: Response, next: NextFunction) => {
@@ -211,8 +234,7 @@ export const memberLogin = async (req: Request, res: Response, next: NextFunctio
 };
 
 export const memberPositions = async (req: Request, res: Response, next: NextFunction) => {
-  const user = await requireActiveUser(req.user!.userId);
-  const positions = await cabinetPositions(user.memberNo);
+  const { positions } = await cachedSession(req.user!.userId);
 
   return next(new AppResponse("Positions fetched successfully", { positions }));
 };
@@ -220,8 +242,7 @@ export const memberPositions = async (req: Request, res: Response, next: NextFun
 // Restores the session on page load.
 export const me = async (req: Request, res: Response, next: NextFunction) => {
   const authUser = req.user!;
-  const user = await requireActiveUser(authUser.userId);
-  const positions = await cabinetPositions(user.memberNo);
+  const { user, positions } = await cachedSession(authUser.userId);
 
   // Checked against the live list, not trusted from the token.
   const position = (authUser.position && positions.find((candidate) => candidate.id === authUser.position!.cmid)) ?? null;
@@ -251,6 +272,8 @@ export const selectPosition = async (req: Request, res: Response, next: NextFunc
   const user = await requireActiveUser(req.user!.userId);
   const positions = await cabinetPositions(user.memberNo);
   const position = positions.find((pos) => pos.id === positionId);
+  // Read fresh above, since it issues a token: keep the cached session in step with it.
+  invalidateUser(user.id);
 
   // Same answer for another member's position, so it can't be used to probe.
   if (!position) {
@@ -281,6 +304,7 @@ export const selectPosition = async (req: Request, res: Response, next: NextFunc
 
 export const logout = async (req: Request, res: Response, next: NextFunction) => {
   revokeToken(req.user!.jti, req.user!.exp);
+  invalidateUser(req.user!.userId);
 
   return next(new AppResponse("Successfully logged out"));
 };
@@ -312,6 +336,7 @@ export const memberChangePassword = async (req: Request, res: Response, next: Ne
     data: { password: await hashPassword(newPassword) },
     select: { id: true },
   });
+  invalidateUser(user.id);
 
   // Keeps the session's committee position and roles.
   const token = signAccessToken(
@@ -353,6 +378,8 @@ export const memberCancelAccount = async (req: Request, res: Response, next?: Ne
     }
 
     await prisma.user.update({ where: { id: user.id }, data: { active: 0 }, select: { id: true } });
+    // Disabled now: no cached session or leader check may outlive it.
+    invalidateUser(user.id);
     revokeToken(authUser.jti, authUser.exp);
 
     if (next) {

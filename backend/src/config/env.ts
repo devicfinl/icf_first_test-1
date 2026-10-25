@@ -23,6 +23,10 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).default(15),
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(20),
+  // How long the signed-in user's account and committee positions are cached between requests.
+  // Changes made outside this API (e.g. a login disabled by the office) take effect within this
+  // time. 0 turns the cache off.
+  USER_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
   // Largest JSON body accepted. This API only takes small objects, so the default is generous.
   JSON_BODY_LIMIT: z.string().default("100kb"),
 });
@@ -67,4 +71,5 @@ export const env = {
   rateLimitMax: raw.RATE_LIMIT_MAX,
   authRateLimitMax: raw.AUTH_RATE_LIMIT_MAX,
   jsonBodyLimit: raw.JSON_BODY_LIMIT,
+  userCacheTtlSeconds: raw.USER_CACHE_TTL_SECONDS,
 } as const;

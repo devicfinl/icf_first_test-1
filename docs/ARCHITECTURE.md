@@ -169,6 +169,7 @@ app.ts
 - `middlewares/rate-limit.ts` applies per-IP limits, tighter on the unauthenticated auth endpoints.
 - `middlewares/request-context.ts` tags each request with an id, echoes it as `X-Request-Id`, and logs method, path, status and duration — never bodies or headers.
 - `utils/reference-data.ts` provides reusable display values such as countries, cities, domain items, hierarchy names, and committee designations, read from the reference tables and cached in memory for an hour. Used by the `auth` and `member` controllers.
+- `utils/user-cache.ts` caches, per signed-in user, the account and committee-position facts read on almost every request (`requireLeader`, `/auth/me`, `/auth/positions`), in memory for `USER_CACHE_TTL_SECONDS` (default 60). Keys are `user:{userId}:{name}`, with the user id taken from the verified token. Logout, password change, account cancel and position select clear the user's entries; changes made outside the API take effect within the TTL. Passwords and tokens are never cached. In-process only, like the token denylist: move it to Redis before running more than one instance.
 - `utils/jwt.ts` signs and verifies access and password-reset tokens.
 - `utils/password.ts` hashes and verifies passwords.
 - `utils/attempt-limiter.ts` throttles repeated login failures against one identity. IP limiting alone would not cover an attacker who changes address.
