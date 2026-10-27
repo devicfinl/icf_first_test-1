@@ -9,6 +9,7 @@ import {
   type OrganisationLevel,
 } from "../../utils/reference-data.js";
 import { handleError, sendSuccess } from "../../utils/response.js";
+import { cachedForUser } from "../../utils/user-cache.js";
 import { validate } from "../../utils/validate.js";
 import { targetRows } from "./pv-targets.controller.js";
 
@@ -394,6 +395,29 @@ export interface Leader {
 // The caller as a leader: the session's committee position must still be a cabinet position this
 // member holds, at any level. They work within that place and everything below it. Re-read on every
 // request, like /auth/me, so a lost position or a disabled account takes effect at once.
+// What requireLeader checks, read from the database: the login, the member it belongs to, the
+// committee position and whether its designation is a cabinet one. No password or personal data.
+async function leaderFacts(userId: number, cmid: number) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, memberNo: true, active: true },
+  });
+  if (!user?.memberNo) return { user, member: null, committeeRow: null, isCabinet: false };
+
+  const [member, committeeRow] = await Promise.all([
+    prisma.membershipMaster.findFirst({ where: { membershipNo: user.memberNo }, select: { mid: true } }),
+    prisma.committeeMember.findUnique({
+      where: { cmid },
+      select: { cmemId: true, cdesignId: true, corgId: true },
+    }),
+  ]);
+  const designation = committeeRow
+    ? await prisma.committeeDesignations.findUnique({ where: { desid: committeeRow.cdesignId }, select: { isCabinet: true } })
+    : null;
+
+  return { user, member, committeeRow, isCabinet: designation?.isCabinet === "Y" };
+}
+
 export async function requireLeader(auth: Request["auth"]): Promise<Leader> {
   const userId = Number(auth?.userId);
   const position = auth?.position;
@@ -405,10 +429,11 @@ export async function requireLeader(auth: Request["auth"]): Promise<Leader> {
     throw AppError.forbidden("Please select the committee position you are acting as.");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, memberNo: true, active: true },
-  });
+  // The database facts are cached per user and position for a short time (utils/user-cache.ts);
+  // every check below still runs on each request.
+  const { user, member, committeeRow, isCabinet } = await cachedForUser(userId, `leader:${position.cmid}`, () =>
+    leaderFacts(userId, position.cmid),
+  );
 
   if (!user) {
     throw AppError.unauthorized("Member not found");
@@ -420,24 +445,11 @@ export async function requireLeader(auth: Request["auth"]): Promise<Leader> {
     throw AppError.forbidden(NOT_A_LEADER);
   }
 
-  const [member, committeeRow] = await Promise.all([
-    prisma.membershipMaster.findFirst({ where: { membershipNo: user.memberNo }, select: { mid: true } }),
-    prisma.committeeMember.findUnique({
-      where: { cmid: position.cmid },
-      select: { cmemId: true, cdesignId: true, corgId: true },
-    }),
-  ]);
-
   if (!member || !committeeRow || committeeRow.cmemId !== member.mid || committeeRow.corgId !== position.orgid) {
     throw AppError.forbidden(NOT_A_LEADER);
   }
 
-  const designation = await prisma.committeeDesignations.findUnique({
-    where: { desid: committeeRow.cdesignId },
-    select: { isCabinet: true },
-  });
-
-  if (designation?.isCabinet !== "Y") {
+  if (!isCabinet) {
     throw AppError.forbidden(NOT_A_LEADER);
   }
 
